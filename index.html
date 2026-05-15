@@ -462,16 +462,21 @@
         throw new Error(err.error?.message || 'Airtable submission failed');
       }
 
-      // Send email notification
-      await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
-        guest_name:         fullGuest,
-        member_name:        memberName,
-        member_address:     fullAddr,
-        additional_guests:  addGuests || 'None',
-        submission_date:    today,
-        guest_signature:    guestSigData,
-        resident_signature: residentSigData
-      });
+      // Send email notification (non-blocking - wont stop success screen)
+      try {
+        const emailResult = await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
+          guest_name:         fullGuest,
+          member_name:        memberName,
+          member_address:     fullAddr,
+          additional_guests:  addGuests || 'None',
+          submission_date:    today,
+          guest_signature:    guestSigData,
+          resident_signature: residentSigData
+        });
+        console.log('Email sent:', emailResult);
+      } catch (emailErr) {
+        console.error('EmailJS error:', emailErr.status, emailErr.text);
+      }
 
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
