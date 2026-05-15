@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prosperity Lakes Club – Guest Waiver</title>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300&display=swap');
 
@@ -192,9 +193,7 @@
   }
 
   .sig-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
-
   .date-auto { font-size: 13px; color: #777; margin-top: 6px; font-style: italic; }
-
   .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
 
   .submit-btn {
@@ -340,19 +339,23 @@
 </div>
 
 <div class="container success-screen" id="successScreen">
-  <div class="success-icon">✓</div>
+  <div class="success-icon">&#10003;</div>
   <h2>Waiver Submitted</h2>
   <p>Thank you. Your guest waiver for Prosperity Lakes Club<br>has been successfully recorded.</p>
 </div>
 
 <script>
-  const _k = ['cGF0V3d3MDF1RG43', 'cTh5N3Au', 'NmU2MjA2NzYxY2ZkM2ZmZjY1YWE4NWU5ODkzMzM0NzQzZjBiMzczMTA2MTA4ZDU4Mzk5Nzc1ZTc5YjUwNmJh', 'OQ=='];
+  emailjs.init('LqQSHTTQVwljIeE79');
+  const EMAILJS_SERVICE  = 'service_avmy6ae';
+  const EMAILJS_TEMPLATE = 'template_q3qsxrj';
+
+  const _k = ['cGF0V3d3MDF1RG43','cTh5N3Au','NmU2MjA2NzYxY2ZkM2ZmZjY1YWE4NWU5ODkzMzM0NzQzZjBiMzczMTA2MTA4ZDU4Mzk5Nzc1ZTc5YjUwNmJh','OQ=='];
   const AIRTABLE_TOKEN = atob(_k[0]) + atob(_k[1]) + atob(_k[2]) + atob(_k[3]);
   const AIRTABLE_BASE  = 'appYkPy5q0uieRaCb';
   const AIRTABLE_TABLE = 'PL Guest Waivers';
 
   const today = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
-  document.getElementById('guestDate').textContent = 'Date: ' + today;
+  document.getElementById('guestDate').textContent    = 'Date: ' + today;
   document.getElementById('residentDate').textContent = 'Date: ' + today;
 
   let guestSigCtx, residentSigCtx;
@@ -368,9 +371,7 @@
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
     let drawing = false, lastX = 0, lastY = 0;
-
     function getPos(e) {
       const r = canvas.getBoundingClientRect();
       const src = e.touches ? e.touches[0] : e;
@@ -379,7 +380,6 @@
         (src.clientY - r.top)  * (canvas.height / r.height / dpr)
       ];
     }
-
     canvas.addEventListener('mousedown',  e => { drawing=true; [lastX,lastY]=getPos(e); });
     canvas.addEventListener('mousemove',  e => { if(!drawing) return; const [x,y]=getPos(e); ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(x,y); ctx.stroke(); [lastX,lastY]=[x,y]; });
     canvas.addEventListener('mouseup',    () => drawing=false);
@@ -416,7 +416,7 @@
 
     const btn = document.getElementById('submitBtn');
     btn.disabled = true;
-    btn.textContent = 'Submitting…';
+    btn.textContent = 'Submitting...';
 
     const title      = document.querySelector('input[name="title"]:checked')?.value || '';
     const guestName  = document.getElementById('guestName').value.trim();
@@ -426,6 +426,7 @@
     const state      = document.getElementById('addrState').value.trim();
     const zip        = document.getElementById('addrZip').value.trim();
     const fullAddr   = street + ', ' + city + ', ' + state + ' ' + zip;
+    const fullGuest  = (title ? title + ' ' : '') + guestName;
 
     const addGuests = [
       document.getElementById('addGuest1').value.trim(),
@@ -433,31 +434,44 @@
       document.getElementById('addGuest3').value.trim()
     ].filter(Boolean).join('; ');
 
-    const fields = {
-      'Guest Name':         (title ? title + ' ' : '') + guestName,
-      'Member Name':        memberName,
-      'Member Address':     fullAddr,
-      'Additional Guests':  addGuests || 'None',
-      'Submission Date':    new Date().toISOString().split('T')[0],
-      'Guest Signature':    guestCanvas.toDataURL('image/png'),
-      'Resident Signature': residentCanvas.toDataURL('image/png'),
-      'Waiver Text':        'Assumption of Risk & Indemnity Agreement – signed and agreed to on ' + today
-    };
+    const guestSigData    = guestCanvas.toDataURL('image/png');
+    const residentSigData = residentCanvas.toDataURL('image/png');
 
     try {
+      // Submit to Airtable
       const res = await fetch('https://api.airtable.com/v0/' + AIRTABLE_BASE + '/' + encodeURIComponent(AIRTABLE_TABLE), {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + AIRTABLE_TOKEN,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ fields })
+        body: JSON.stringify({ fields: {
+          'Guest Name':         fullGuest,
+          'Member Name':        memberName,
+          'Member Address':     fullAddr,
+          'Additional Guests':  addGuests || 'None',
+          'Submission Date':    new Date().toISOString().split('T')[0],
+          'Guest Signature':    guestSigData,
+          'Resident Signature': residentSigData,
+          'Waiver Text':        'Assumption of Risk & Indemnity Agreement - signed and agreed to on ' + today
+        }})
       });
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error?.message || 'Submission failed');
+        throw new Error(err.error?.message || 'Airtable submission failed');
       }
+
+      // Send email notification
+      await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
+        guest_name:         fullGuest,
+        member_name:        memberName,
+        member_address:     fullAddr,
+        additional_guests:  addGuests || 'None',
+        submission_date:    today,
+        guest_signature:    guestSigData,
+        resident_signature: residentSigData
+      });
 
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
