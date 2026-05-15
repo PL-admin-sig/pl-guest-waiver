@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prosperity Lakes Club – Guest Waiver</title>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300&display=swap');
 
@@ -345,10 +344,6 @@
 </div>
 
 <script>
-  emailjs.init('LqQSHTTQVwljIeE79');
-  const EMAILJS_SERVICE  = 'service_avmy6ae';
-  const EMAILJS_TEMPLATE = 'template_q3qsxrj';
-
   const _k = ['cGF0V3d3MDF1RG43','cTh5N3Au','NmU2MjA2NzYxY2ZkM2ZmZjY1YWE4NWU5ODkzMzM0NzQzZjBiMzczMTA2MTA4ZDU4Mzk5Nzc1ZTc5YjUwNmJh','OQ=='];
   const AIRTABLE_TOKEN = atob(_k[0]) + atob(_k[1]) + atob(_k[2]) + atob(_k[3]);
   const AIRTABLE_BASE  = 'appYkPy5q0uieRaCb';
@@ -434,11 +429,7 @@
       document.getElementById('addGuest3').value.trim()
     ].filter(Boolean).join('; ');
 
-    const guestSigData    = guestCanvas.toDataURL('image/png');
-    const residentSigData = residentCanvas.toDataURL('image/png');
-
     try {
-      // Submit to Airtable
       const res = await fetch('https://api.airtable.com/v0/' + AIRTABLE_BASE + '/' + encodeURIComponent(AIRTABLE_TABLE), {
         method: 'POST',
         headers: {
@@ -451,31 +442,15 @@
           'Member Address':     fullAddr,
           'Additional Guests':  addGuests || 'None',
           'Submission Date':    new Date().toISOString().split('T')[0],
-          'Guest Signature':    guestSigData,
-          'Resident Signature': residentSigData,
+          'Guest Signature':    guestCanvas.toDataURL('image/png'),
+          'Resident Signature': residentCanvas.toDataURL('image/png'),
           'Waiver Text':        'Assumption of Risk & Indemnity Agreement - signed and agreed to on ' + today
         }})
       });
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error?.message || 'Airtable submission failed');
-      }
-
-      // Send email notification (non-blocking - wont stop success screen)
-      try {
-        const emailResult = await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
-          guest_name:         fullGuest,
-          member_name:        memberName,
-          member_address:     fullAddr,
-          additional_guests:  addGuests || 'None',
-          submission_date:    today,
-          guest_signature:    guestSigData,
-          resident_signature: residentSigData
-        });
-        console.log('Email sent:', emailResult);
-      } catch (emailErr) {
-        console.error('EmailJS error:', emailErr.status, emailErr.text);
+        throw new Error(err.error?.message || 'Submission failed');
       }
 
       document.getElementById('formContainer').style.display = 'none';
