@@ -456,6 +456,19 @@
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
 
+      // Send email (non-blocking)
+      if (typeof emailjs !== 'undefined') {
+        emailjs.send('service_avmy6ae', 'template_q3qsxrj', {
+          guest_name:         fullGuest,
+          member_name:        memberName,
+          member_address:     fullAddr,
+          additional_guests:  addGuests || 'None',
+          submission_date:    today,
+          guest_signature:    guestCanvas.toDataURL('image/png'),
+          resident_signature: residentCanvas.toDataURL('image/png')
+        }).catch(function(e) { console.error('EmailJS error:', e); });
+      }
+
     } catch (err) {
       btn.disabled = false;
       btn.textContent = 'Submit Waiver';
@@ -465,5 +478,6 @@
     }
   }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js" onload="emailjs.init('LqQSHTTQVwljIeE79')"></script>
 </body>
 </html>
