@@ -458,7 +458,7 @@
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
 
-      // Send email (non-blocking)
+      // Send email (non-blocking) - text only, no images to keep payload small for mobile
       try {
         var templateParams = {
           guest_name:         fullGuest,
@@ -466,10 +466,9 @@
           member_address:     fullAddr,
           additional_guests:  addGuests || 'None',
           submission_date:    today,
-          guest_signature:    guestCanvas.toDataURL('image/png'),
-          resident_signature: residentCanvas.toDataURL('image/png')
+          guest_signature:    'Signature captured – view in Airtable',
+          resident_signature: 'Signature captured – view in Airtable'
         };
-        emailjs.sendForm && console.log('sendForm available');
         emailjs.send('service_avmy6ae', 'template_q3qsxrj', templateParams, 'LqQSHTTQVwljIeE79')
           .then(function(r){ console.log('Email OK', r.status, r.text); })
           .catch(function(e){ console.error('Email FAIL', JSON.stringify(e)); });
