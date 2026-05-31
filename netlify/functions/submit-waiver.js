@@ -164,6 +164,9 @@ exports.handler = async (event) => {
     'Content-Type': 'application/json'
   };
 
+  // Top-level safety net — catches any unhandled exception so we ALWAYS return JSON
+  try {
+
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -206,7 +209,8 @@ exports.handler = async (event) => {
   }
 
   // ── 2. Run fuzzy match ──
-  const { matched, bestMatch } = matchStreetName(memberAddress, streetNames);
+  const safeAddress = typeof memberAddress === 'string' ? memberAddress : '';
+  const { matched, bestMatch } = matchStreetName(safeAddress, streetNames);
 
   if (!matched) {
     // ── 3a. No match — create pending submission ──
@@ -451,4 +455,14 @@ Signatures captured digitally — view in Airtable.
     headers,
     body: JSON.stringify({ success: true })
   };
+
+  } catch (topErr) {
+    // Unhandled exception — return structured error instead of crashing
+    console.error('Unhandled exception in submit-waiver:', topErr);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'Server error: ' + (topErr.message || String(topErr)) })
+    };
+  }
 };
