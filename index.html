@@ -305,6 +305,65 @@
       filter: brightness(0);
     }
 
+    /* ── Pending overlay ── */
+    .pending-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(75,156,211,0.97);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 24px;
+    }
+    .pending-overlay.active { display: flex; }
+    .pending-overlay h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(20px, 5vw, 26px);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .pending-overlay p {
+      font-size: 16px;
+      color: rgba(255,255,255,0.9);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .retry-btn {
+      padding: 16px 40px;
+      background: #2d6a4f;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-family: 'Playfair Display', serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      opacity: 0.4;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .retry-btn.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .pending-spinner {
+      width: 40px; height: 40px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     @media (max-width: 500px) {
       .sig-row { grid-template-columns: 1fr; }
       .address-row { grid-template-columns: 1fr; }
@@ -493,6 +552,150 @@
     residentSigCtx = initCanvas('residentSigCanvas');
   });
 
+  // ── Pending state ──────────────────────────────────────────────
+  let pendingId       = null;
+  let pollInterval    = null;
+  let cachedFormData  = null;
+
+  function showPendingOverlay() {
+    document.getElementById('pendingOverlay').classList.add('active');
+    document.getElementById('pendingSpinner').style.display = 'block';
+    document.getElementById('pendingTitle').textContent = 'Please Speak to Attendant';
+    document.getElementById('pendingMsg').textContent =
+      'Your address needs to be verified.\nAn attendant will assist you shortly.';
+    document.getElementById('retryBtn').classList.remove('active');
+  }
+
+  function startPolling(id) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(async () => {
+      try {
+        const res  = await fetch('/.netlify/functions/check-pending?id=' + id);
+        const data = await res.json();
+        if (data.status === 'approved') {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          onApproved(data.formData);
+        } else if (data.status === 'denied') {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          onDenied(data.formData);
+        }
+      } catch (e) { /* keep polling */ }
+    }, 3000);
+  }
+
+  function onApproved(formData) {
+    // Restore all form data — signatures cleared so guest re-signs
+    restoreFormData(formData, true);
+    // Update overlay
+    document.getElementById('pendingSpinner').style.display = 'none';
+    document.getElementById('pendingTitle').textContent = 'Address Verified!';
+    document.getElementById('pendingMsg').textContent =
+      'Your address has been approved. Please sign below and tap Retry to complete your submission.';
+    document.getElementById('retryBtn').classList.add('active');
+  }
+
+  function onDenied(formData) {
+    // Restore all form data except street address — signatures also cleared
+    document.getElementById('pendingSpinner').style.display = 'none';
+    document.getElementById('pendingTitle').textContent = 'Address Could Not Be Verified';
+    document.getElementById('pendingMsg').textContent =
+      'Please try again with a corrected address.';
+    setTimeout(() => {
+      document.getElementById('pendingOverlay').classList.remove('active');
+      restoreFormData(formData, false); // false = clear street address
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = false;
+      btn.textContent = 'Submit Waiver';
+    }, 2500);
+  }
+
+  function restoreFormData(formData, keepStreet) {
+    if (!formData) return;
+    // Title
+    if (formData.title) {
+      const titleInput = document.querySelector('input[name="title"][value="' + formData.title + '"]');
+      if (titleInput) titleInput.checked = true;
+    }
+    // Text fields
+    document.getElementById('guestName').value  = formData.guestName  || '';
+    document.getElementById('memberName').value = formData.memberName || '';
+    if (keepStreet) {
+      // On approve: restore full address including street
+      const parts = (formData.memberAddress || '').split(',');
+      document.getElementById('addrStreet').value = parts[0] ? parts[0].trim() : '';
+    } else {
+      // On deny: clear only the street field
+      document.getElementById('addrStreet').value = '';
+    }
+    document.getElementById('addrCity').value  = formData.addrCity  || '';
+    document.getElementById('addrState').value = formData.addrState || '';
+    document.getElementById('addrZip').value   = formData.addrZip   || '';
+    // Additional guests
+    const ag = (formData.additionalGuests && formData.additionalGuests !== 'None')
+      ? formData.additionalGuests.split('; ') : [];
+    document.getElementById('addGuest1').value = ag[0] || '';
+    document.getElementById('addGuest2').value = ag[1] || '';
+    document.getElementById('addGuest3').value = ag[2] || '';
+    // Always clear signatures
+    clearSig('guestSigCanvas',    guestSigCtx);
+    clearSig('residentSigCanvas', residentSigCtx);
+    // Uncheck agree
+    document.getElementById('agreeCheck').checked = false;
+  }
+
+  async function retrySubmission() {
+    if (!cachedFormData) return;
+    const retryBtn = document.getElementById('retryBtn');
+    retryBtn.classList.remove('active');
+    retryBtn.textContent = 'Submitting...';
+
+    const guestCanvas    = document.getElementById('guestSigCanvas');
+    const residentCanvas = document.getElementById('residentSigCanvas');
+
+    if (isCanvasBlank(guestCanvas) || isCanvasBlank(residentCanvas)) {
+      retryBtn.classList.add('active');
+      retryBtn.textContent = 'Retry Submission';
+      alert('Please sign both signature fields before retrying.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/.netlify/functions/submit-waiver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cachedFormData,
+          guestSignature:    guestCanvas.toDataURL('image/png'),
+          residentSignature: residentCanvas.toDataURL('image/png')
+        })
+      });
+
+      const result = await res.json();
+      if (res.status === 202 && result.pendingId) {
+        // Still pending somehow — restart poll
+        pendingId = result.pendingId;
+        retryBtn.classList.add('active');
+        retryBtn.textContent = 'Retry Submission';
+        startPolling(pendingId);
+        return;
+      }
+      if (!res.ok || result.error) throw new Error(result.error || 'Submission failed');
+
+      // Success
+      document.getElementById('pendingOverlay').classList.remove('active');
+      document.getElementById('formContainer').style.display = 'none';
+      document.getElementById('successScreen').style.display = 'block';
+
+    } catch (err) {
+      retryBtn.classList.add('active');
+      retryBtn.textContent = 'Retry Submission';
+      alert('Submission failed: ' + err.message + '. Please try again.');
+    }
+  }
+
+  // ── Main submit ─────────────────────────────────────────────────
   async function handleSubmit(e) {
     e.preventDefault();
 
@@ -534,27 +737,47 @@
       document.getElementById('addGuest3').value.trim()
     ].filter(Boolean).join('; ');
 
+    // Cache form data for potential retry (no signatures stored)
+    cachedFormData = {
+      title,
+      guestName:         fullGuest,
+      memberName,
+      memberAddress:     fullAddr,
+      additionalGuests:  addGuests || 'None',
+      addrCity:          city,
+      addrState:         state,
+      addrZip:           zip,
+      submissionDate:    today,
+      submissionDateISO: todayISO
+    };
+
     try {
       const res = await fetch('/.netlify/functions/submit-waiver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          guestName:         fullGuest,
-          memberName:        memberName,
-          memberAddress:     fullAddr,
-          additionalGuests:  addGuests || 'None',
-          submissionDate:    today,
-          submissionDateISO: todayISO,
+          ...cachedFormData,
           guestSignature:    guestCanvas.toDataURL('image/png'),
           residentSignature: residentCanvas.toDataURL('image/png')
         })
       });
 
       const result = await res.json();
+
+      // ── Pending path ──
+      if (res.status === 202 && result.pendingId) {
+        pendingId = result.pendingId;
+        showPendingOverlay();
+        startPolling(pendingId);
+        return;
+      }
+
+      // ── Error path ──
       if (!res.ok || result.error) {
         throw new Error(result.error || 'Submission failed');
       }
 
+      // ── Success path ──
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
 
@@ -565,5 +788,14 @@
     }
   }
 </script>
+
+<!-- Pending overlay -->
+<div class="pending-overlay" id="pendingOverlay">
+  <div class="pending-spinner" id="pendingSpinner"></div>
+  <h2 id="pendingTitle">Please Speak to Attendant</h2>
+  <p id="pendingMsg">Your address needs to be verified.<br>An attendant will assist you shortly.</p>
+  <button class="retry-btn" id="retryBtn" onclick="retrySubmission()">Retry Submission</button>
+</div>
+
 </body>
 </html>
