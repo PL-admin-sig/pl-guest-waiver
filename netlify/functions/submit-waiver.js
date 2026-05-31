@@ -387,7 +387,6 @@ exports.handler = async (event) => {
   }
 
   // ── Submit to Airtable Waivers table ──
-  let waiverRecordId = null;
   try {
     const waiverFields = {
       'Guest Name':         guestName,
@@ -399,15 +398,11 @@ exports.handler = async (event) => {
       'Resident Signature': residentSignature,
       'Waiver Text':        `Assumption of Risk & Indemnity Agreement - Guest confirmed reading and voluntary agreement on ${submissionDate}`
     };
-    if (addressRecordId) {
-      waiverFields['Member Address Link'] = [addressRecordId];
-    }
     const waiverRes  = await airtableCreate(BASE, WAIVER_TABLE, waiverFields, TOKEN);
     const waiverData = JSON.parse(waiverRes.body);
     if (waiverRes.status !== 200) {
       throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
     }
-    waiverRecordId = waiverData.id;
   } catch (err) {
     return {
       statusCode: 500,
