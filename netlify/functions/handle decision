@@ -1,0 +1,162 @@
+const https = require('https');
+const crypto = require('crypto');
+
+function airtableRequest(method, path, body, token) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: 'api.airtable.com',
+      path,
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...(bodyStr && { 'Content-Length': Buffer.byteLength(bodyStr) })
+      }
+    };
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.on('error', reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+function airtableGet(baseId, table, filterFormula, token) {
+  const encoded = encodeURIComponent(filterFormula);
+  const path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encoded}`;
+  return airtableRequest('GET', path, null, token);
+}
+
+function airtableCreate(baseId, table, fields, token) {
+  const path = `/v0/${baseId}/${encodeURIComponent(table)}`;
+  return airtableRequest('POST', path, { fields }, token);
+}
+
+function airtableUpdate(baseId, table, recordId, fields, token) {
+  const path = `/v0/${baseId}/${encodeURIComponent(table)}/${recordId}`;
+  return airtableRequest('PATCH', path, { fields }, token);
+}
+
+exports.handler = async (event) => {
+  const { id, action, token } = event.queryStringParameters || {};
+
+  const TOKEN         = process.env.AIRTABLE_TOKEN;
+  const BASE          = process.env.AIRTABLE_BASE;
+  const PENDING_TABLE = process.env.AIRTABLE_PENDING_TABLE;
+  const ADDRESS_TABLE = process.env.AIRTABLE_ADDRESS_MASTER_TABLE;
+
+  // ── Validate HMAC token ──
+  if (!id || !action || !token) {
+    return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'text/html' },
+      body: '<h2>Invalid request.</h2>'
+    };
+  }
+
+  const expectedToken = crypto
+    .createHmac('sha256', TOKEN)
+    .update(id + action)
+    .digest('hex');
+
+  if (token !== expectedToken) {
+    return {
+      statusCode: 403,
+      headers: { 'Content-Type': 'text/html' },
+      body: '<h2>Invalid or expired link.</h2>'
+    };
+  }
+
+  // ── Fetch pending record ──
+  let pendingRecord = null;
+  try {
+    const res  = await airtableGet(BASE, PENDING_TABLE, `{Pending ID} = "${id}"`, TOKEN);
+    const data = JSON.parse(res.body);
+    if (!data.records || data.records.length === 0) {
+      return {
+        statusCode: 404,
+        headers: { 'Content-Type': 'text/html' },
+        body: '<h2>Submission not found. It may have already been processed.</h2>'
+      };
+    }
+    pendingRecord = data.records[0];
+  } catch (err) {
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'text/html' },
+      body: '<h2>Error retrieving submission.</h2>'
+    };
+  }
+
+  // Check if already processed
+  if (pendingRecord.fields['Status'] !== 'pending') {
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'text/html' },
+      body: `<h2>This submission has already been ${pendingRecord.fields['Status']}.</h2>`
+    };
+  }
+
+  const recordId    = pendingRecord.id;
+  const address     = pendingRecord.fields['Full Address'];
+  const guestName   = pendingRecord.fields['Guest Name'];
+
+  if (action === 'approve') {
+    // ── Add address to Address Master ──
+    try {
+      await airtableCreate(BASE, ADDRESS_TABLE, {
+        'Street Address': address
+      }, TOKEN);
+    } catch (err) {
+      console.error('Failed to add address:', err);
+    }
+
+    // ── Update pending record status ──
+    await airtableUpdate(BASE, PENDING_TABLE, recordId, { 'Status': 'approved' }, TOKEN);
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'text/html' },
+      body: `
+        <html>
+          <head><title>Approved</title></head>
+          <body style="font-family:Georgia,serif;text-align:center;padding:60px;background:#f8f5ef;">
+            <h2 style="color:#2d6a4f;">✓ Address Approved</h2>
+            <p style="color:#444;font-size:16px;">
+              <strong>${address}</strong> has been added to the Address Master.<br><br>
+              The guest's form is now ready to resubmit.
+            </p>
+          </body>
+        </html>
+      `
+    };
+  }
+
+  if (action === 'deny') {
+    // ── Update pending record status ──
+    await airtableUpdate(BASE, PENDING_TABLE, recordId, { 'Status': 'denied' }, TOKEN);
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'text/html' },
+      body: `
+        <html>
+          <head><title>Denied</title></head>
+          <body style="font-family:Georgia,serif;text-align:center;padding:60px;background:#f8f5ef;">
+            <h2 style="color:#c0392b;">✗ Address Denied</h2>
+            <p style="color:#444;font-size:16px;">
+              The submission for <strong>${guestName}</strong> has been denied.<br><br>
+              The guest will be prompted to re-enter their address.
+            </p>
+          </body>
+        </html>
+      `
+    };
+  }
+
+  return { statusCode: 400, headers: { 'Content-Type': 'text/html' }, body: '<h2>Unknown action.</h2>' };
+};
