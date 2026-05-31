@@ -1,0 +1,101 @@
+const https = require('https');
+
+// Simple in-memory rate limiting (resets on function cold start)
+const requestCounts = {};
+const RATE_LIMIT    = 60;  // max requests per window
+const RATE_WINDOW   = 60000; // 1 minute in ms
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  if (!requestCounts[ip] || now - requestCounts[ip].start > RATE_WINDOW) {
+    requestCounts[ip] = { count: 1, start: now };
+    return false;
+  }
+  requestCounts[ip].count++;
+  return requestCounts[ip].count > RATE_LIMIT;
+}
+
+function airtableGet(baseId, table, filterFormula, token) {
+  return new Promise((resolve, reject) => {
+    const encoded = encodeURIComponent(filterFormula);
+    const path    = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encoded}`;
+    const options = {
+      hostname: 'api.airtable.com',
+      path,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+exports.handler = async (event) => {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json'
+  };
+
+  // Rate limiting by IP
+  const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
+  if (isRateLimited(ip)) {
+    return {
+      statusCode: 429,
+      headers,
+      body: JSON.stringify({ error: 'Too many requests' })
+    };
+  }
+
+  const { id } = event.queryStringParameters || {};
+  if (!id || id.length !== 32) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: 'Invalid ID' })
+    };
+  }
+
+  const TOKEN         = process.env.AIRTABLE_TOKEN;
+  const BASE          = process.env.AIRTABLE_BASE;
+  const PENDING_TABLE = process.env.AIRTABLE_PENDING_TABLE;
+
+  try {
+    const res  = await airtableGet(BASE, PENDING_TABLE, `{Pending ID} = "${id}"`, TOKEN);
+    const data = JSON.parse(res.body);
+
+    if (!data.records || data.records.length === 0) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'Not found' })
+      };
+    }
+
+    const record   = data.records[0];
+    const status   = record.fields['Status'];
+    // Return form data for restoration (no signatures stored)
+    const formData = record.fields['Form Data']
+      ? JSON.parse(record.fields['Form Data'])
+      : null;
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ status, formData })
+    };
+  } catch (err) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'Server error' })
+    };
+  }
+};
