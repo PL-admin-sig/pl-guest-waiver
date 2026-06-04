@@ -51,7 +51,7 @@ function sendEmail(to, from, subject, text, html, sendgridKey) {
       personalizations: [{ to: [{ email: to }] }],
       from: { email: from, name: 'Prosperity Lakes Club' },
       subject,
-      content: [{ type: 'text/html', value: html }, { type: 'text/plain', value: text }]
+      content: [{ type: 'text/plain', value: text }, { type: 'text/html', value: html }]
     });
     const options = {
       hostname: 'api.sendgrid.com',
