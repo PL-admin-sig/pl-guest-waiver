@@ -88,7 +88,7 @@ function logSendGridResponse(label, status, body) {
   }
 }
 
-// ── PDF generation (pdf-lib — no filesystem dependencies) ───────────────────
+// ── PDF generation ───────────────────────────────────────────────────────────
 
 const WAIVER_PARAGRAPHS = [
   'By entering and/or using any facilities, services, equipment, or participating in any activity organized, arranged, or sponsored by PROSPERITY LAKES CLUB, I, the undersigned Guest, acknowledge and agree that I do so entirely at my own risk. I hereby release, waive, and forever discharge PROSPERITY LAKES CLUB, its officers, partners, agents, employees, affiliates, directors, and attorneys (collectively, the "Club Indemnified Parties") from any and all claims, demands, damages, actions, or causes of action of any kind whatsoever, including those arising from the negligence of the Club Indemnified Parties, which I now have or may have in the future, resulting from my participation in or use of any Club facilities, equipment, services, or activities.',
@@ -114,32 +114,22 @@ function wrapText(text, maxCharsPerLine) {
 }
 
 async function generateWaiverPDF(data) {
-  const {
-    guestName, memberName, memberAddress, additionalGuests,
-    submissionDate, guestSignature, residentSignature
-  } = data;
+  const { guestName, memberName, memberAddress, additionalGuests, submissionDate, guestSignature, residentSignature } = data;
 
-  const pdfDoc = await PDFDocument.create();
-  const fontBold   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const fontReg    = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pdfDoc   = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  const brandDark  = rgb(0.129, 0.275, 0.369);  // #21465e
-  const brandBlue  = rgb(0.294, 0.612, 0.827);  // #4b9cd3
-  const gray       = rgb(0.5, 0.5, 0.5);
-  const lightGray  = rgb(0.788, 0.749, 0.659);  // #c9bfa8
-  const black      = rgb(0.133, 0.133, 0.133);
+  const brandDark = rgb(0.129, 0.275, 0.369);
+  const brandBlue = rgb(0.294, 0.612, 0.827);
+  const gray      = rgb(0.5, 0.5, 0.5);
+  const lightGray = rgb(0.788, 0.749, 0.659);
+  const black     = rgb(0.133, 0.133, 0.133);
 
   const pageW = 612, pageH = 792;
   const marginL = 50, marginR = 50;
   const contentW = pageW - marginL - marginR;
 
-  // Helper: draw text returning new Y
-  function drawText(page, text, x, y, font, size, color) {
-    page.drawText(text, { x, y, font, size, color });
-    return y - (size * 1.4);
-  }
-
-  // Helper: wrapped paragraph, returns new Y
   function drawParagraph(page, text, x, y, font, size, color, maxWidth) {
     const charsPerLine = Math.floor(maxWidth / (size * 0.52));
     const lines = wrapText(text, charsPerLine);
@@ -150,7 +140,6 @@ async function generateWaiverPDF(data) {
     return y;
   }
 
-  // Helper: section heading
   function drawSectionHeading(page, label, y) {
     page.drawText(label, { x: marginL, y, font: fontBold, size: 8, color: brandDark, characterSpacing: 1.2 });
     y -= 6;
@@ -158,10 +147,9 @@ async function generateWaiverPDF(data) {
     return y - 12;
   }
 
-  // Helper: info row
   function drawInfoRow(page, label, value, y) {
     page.drawText(label, { x: marginL, y, font: fontBold, size: 10, color: gray });
-    page.drawText(value || '—', { x: marginL + 145, y, font: fontReg, size: 10, color: black });
+    page.drawText(value || '-', { x: marginL + 145, y, font: fontReg, size: 10, color: black });
     return y - 18;
   }
 
@@ -169,54 +157,45 @@ async function generateWaiverPDF(data) {
   let page = pdfDoc.addPage([pageW, pageH]);
   let y = pageH;
 
-  // Header bar
+  // Header
   page.drawRectangle({ x: 0, y: pageH - 75, width: pageW, height: 75, color: brandBlue });
-  page.drawText('PROSPERITY LAKES CLUB', {
-    x: 0, y: pageH - 38, font: fontBold, size: 18, color: rgb(1,1,1),
-    // center manually
-    x: (pageW - fontBold.widthOfTextAtSize('PROSPERITY LAKES CLUB', 18)) / 2,
-  });
-  page.drawText('GUEST WAIVER', {
-    x: (pageW - fontBold.widthOfTextAtSize('GUEST WAIVER', 11)) / 2,
-    y: pageH - 58, font: fontBold, size: 11, color: rgb(1,1,1)
-  });
+  const title1 = 'PROSPERITY LAKES CLUB';
+  const title2 = 'GUEST WAIVER';
+  page.drawText(title1, { x: (pageW - fontBold.widthOfTextAtSize(title1, 18)) / 2, y: pageH - 38, font: fontBold, size: 18, color: rgb(1,1,1) });
+  page.drawText(title2, { x: (pageW - fontBold.widthOfTextAtSize(title2, 11)) / 2, y: pageH - 58, font: fontBold, size: 11, color: rgb(1,1,1) });
 
   y = pageH - 95;
 
-  // Guest Information
+  // Guest info
   y = drawSectionHeading(page, 'GUEST INFORMATION', y);
   y = drawInfoRow(page, 'Guest Name:', guestName, y);
   y = drawInfoRow(page, 'Member Name:', memberName, y);
   y = drawInfoRow(page, 'Member Address:', memberAddress, y);
   y = drawInfoRow(page, 'Additional Guests:', (additionalGuests && additionalGuests !== 'None') ? additionalGuests : 'None', y);
   y = drawInfoRow(page, 'Submission Date:', submissionDate, y);
-
   y -= 16;
 
-  // Waiver Text
+  // Waiver text
   y = drawSectionHeading(page, 'ASSUMPTION OF RISK & INDEMNITY AGREEMENT', y);
   for (let i = 0; i < WAIVER_PARAGRAPHS.length; i++) {
     y = drawParagraph(page, WAIVER_PARAGRAPHS[i], marginL, y, fontReg, 9, black, contentW);
     if (i < WAIVER_PARAGRAPHS.length - 1) y -= 8;
-    // If running low on page, add page 2
-    if (y < 140 && i < WAIVER_PARAGRAPHS.length - 1) {
+    if (y < 160 && i < WAIVER_PARAGRAPHS.length - 1) {
       page = pdfDoc.addPage([pageW, pageH]);
       y = pageH - 50;
     }
   }
-
   y -= 16;
 
-  // If signatures won't fit, add a new page
+  // Add new page if signatures won't fit
   if (y < 220) {
     page = pdfDoc.addPage([pageW, pageH]);
     y = pageH - 50;
   }
 
-  // Agreement
+  // Agreement — use [X] instead of Unicode checkmark to avoid WinAnsi encoding error
   y = drawSectionHeading(page, 'AGREEMENT', y);
-  y = drawParagraph(page, '\u2611  I have read and fully understand the Assumption of Risk & Indemnity Agreement above, and I voluntarily agree to its terms.', marginL, y, fontReg, 9, black, contentW);
-
+  y = drawParagraph(page, '[X]  I have read and fully understand the Assumption of Risk & Indemnity Agreement above, and I voluntarily agree to its terms.', marginL, y, fontReg, 9, black, contentW);
   y -= 20;
 
   // Signatures
@@ -227,29 +206,20 @@ async function generateWaiverPDF(data) {
   const sig1X = marginL;
   const sig2X = marginL + sigW + 20;
 
-  // Labels
-  page.drawText('GUEST SIGNATURE', { x: sig1X, y: y + 2, font: fontBold, size: 8, color: gray });
+  page.drawText('GUEST SIGNATURE',    { x: sig1X, y: y + 2, font: fontBold, size: 8, color: gray });
   page.drawText('RESIDENT SIGNATURE', { x: sig2X, y: y + 2, font: fontBold, size: 8, color: gray });
   y -= 10;
 
-  // Boxes
   page.drawRectangle({ x: sig1X, y: y - sigH, width: sigW, height: sigH, borderColor: lightGray, borderWidth: 0.5 });
   page.drawRectangle({ x: sig2X, y: y - sigH, width: sigW, height: sigH, borderColor: lightGray, borderWidth: 0.5 });
 
-  // Embed signatures
   async function embedSig(dataUrl, x, boxY) {
     try {
       if (!dataUrl || !dataUrl.startsWith('data:image/')) return;
-      const base64 = dataUrl.split(',')[1];
-      const imgBuf = Buffer.from(base64, 'base64');
-      const img = await pdfDoc.embedPng(imgBuf);
-      const dims = img.scaleToFit(sigW - 8, sigH - 8);
-      page.drawImage(img, {
-        x: x + 4,
-        y: boxY - sigH + (sigH - dims.height) / 2,
-        width: dims.width,
-        height: dims.height
-      });
+      const imgBuf = Buffer.from(dataUrl.split(',')[1], 'base64');
+      const img    = await pdfDoc.embedPng(imgBuf);
+      const dims   = img.scaleToFit(sigW - 8, sigH - 8);
+      page.drawImage(img, { x: x + 4, y: boxY - sigH + (sigH - dims.height) / 2, width: dims.width, height: dims.height });
     } catch (e) {
       console.error('Signature embed error:', e.message);
     }
@@ -258,20 +228,14 @@ async function generateWaiverPDF(data) {
   await embedSig(guestSignature,    sig1X, y);
   await embedSig(residentSignature, sig2X, y);
 
-  // Date lines
   const dateY = y - sigH - 10;
   page.drawText(`Date: ${submissionDate}`, { x: sig1X, y: dateY, font: fontReg, size: 9, color: gray });
   page.drawText(`Date: ${submissionDate}`, { x: sig2X, y: dateY, font: fontReg, size: 9, color: gray });
 
-  // Footer
-  const footerText = 'Prosperity Lakes Club \u00B7 Guest Waiver System \u00B7 Document generated electronically';
-  page.drawText(footerText, {
-    x: (pageW - fontReg.widthOfTextAtSize(footerText, 8)) / 2,
-    y: 20, font: fontReg, size: 8, color: gray
-  });
+  const footerText = 'Prosperity Lakes Club - Guest Waiver System - Document generated electronically';
+  page.drawText(footerText, { x: (pageW - fontReg.widthOfTextAtSize(footerText, 8)) / 2, y: 20, font: fontReg, size: 8, color: gray });
 
-  const pdfBytes = await pdfDoc.save();
-  return Buffer.from(pdfBytes);
+  return Buffer.from(await pdfDoc.save());
 }
 
 // ── Fuzzy street matching ────────────────────────────────────────────────────
@@ -305,9 +269,7 @@ function editDistance(a, b) {
   );
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = a[i-1] === b[j-1]
-        ? dp[i-1][j-1]
-        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
     }
   }
   return dp[a.length][b.length];
@@ -325,8 +287,7 @@ function matchStreetName(submittedAddress, streetNames) {
   const noSuffix = removeSuffixes(norm);
   const subWords = noSuffix.split(' ').filter(w => w.length > 1);
 
-  let bestMatch = null;
-  let bestScore = 0;
+  let bestMatch = null, bestScore = 0;
 
   for (const street of streetNames) {
     const streetNorm     = normalize(street);
@@ -356,7 +317,6 @@ exports.handler = async (event) => {
   };
 
   try {
-
     if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
     if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
 
@@ -391,19 +351,20 @@ exports.handler = async (event) => {
       console.error('Failed to fetch street names:', err);
     }
 
-    // Extract house number and street-only portion for matching
+    // Extract house number and street for matching
     const submittedStreet = memberAddress ? memberAddress.split(',')[0].trim() : '';
     const houseNumber     = extractNumber(submittedStreet);
+    const safeStreet      = typeof submittedStreet === 'string' ? submittedStreet : '';
 
     // ── 2. Fuzzy match ──
-    const safeStreet = typeof submittedStreet === 'string' ? submittedStreet : '';
     const { matched, bestMatch } = matchStreetName(safeStreet, streetNames);
 
-    // Build properly formatted street using matched street name + original house number
-    // e.g. "11111" + "Aura Moonlight Terrace" = "11111 Aura Moonlight Terrace"
+    // Build properly formatted street using matched street name + house number
     const formattedStreet = (matched && bestMatch && houseNumber)
       ? `${houseNumber} ${bestMatch}`
       : submittedStreet;
+
+    console.log(`Address match: submitted="${submittedStreet}" matched=${matched} bestMatch="${bestMatch}" formatted="${formattedStreet}"`);
 
     if (!matched) {
       // ── Pending path ──
@@ -412,13 +373,13 @@ exports.handler = async (event) => {
       const denyToken    = crypto.createHmac('sha256', TOKEN).update(pendingId + 'deny').digest('hex');
 
       const formData = JSON.stringify({
-        title:           data.title || '',
-        guestName,       memberName,
-        addrStreet:      submittedStreet,
-        addrCity:        addrCity  || '',
-        addrState:       addrState || '',
-        addrZip:         addrZip   || '',
-        memberAddress,   additionalGuests
+        title:        data.title || '',
+        guestName,    memberName,
+        addrStreet:   submittedStreet,
+        addrCity:     addrCity  || '',
+        addrState:    addrState || '',
+        addrZip:      addrZip   || '',
+        memberAddress, additionalGuests
       });
 
       try {
@@ -437,8 +398,8 @@ exports.handler = async (event) => {
         return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to process submission' }) };
       }
 
-      const approveUrl = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=approve&token=${approveToken}`;
-      const denyUrl    = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=deny&token=${denyToken}`;
+      const approveUrl  = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=approve&token=${approveToken}`;
+      const denyUrl     = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=deny&token=${denyToken}`;
       const guestsDisplay = (additionalGuests && additionalGuests !== 'None') ? additionalGuests : 'None';
 
       const adminHtml = `
@@ -451,10 +412,10 @@ exports.handler = async (event) => {
             <tr style="background:#f8f5ef;"><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Submitted Address</td><td style="padding:10px 14px;color:#333;">${memberAddress}</td></tr>
           </table>
           <div style="margin:28px 0;text-align:center;">
-            <a href="${approveUrl}" style="background:#2d6a4f;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;margin-right:16px;">✓ Approve</a>
-            <a href="${denyUrl}"    style="background:#c0392b;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;">✗ Deny</a>
+            <a href="${approveUrl}" style="background:#2d6a4f;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;margin-right:16px;">Approve</a>
+            <a href="${denyUrl}"    style="background:#c0392b;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;">Deny</a>
           </div>
-          <p style="color:#999;font-size:12px;text-align:center;">Prosperity Lakes Club · Guest Waiver System</p>
+          <p style="color:#999;font-size:12px;text-align:center;">Prosperity Lakes Club - Guest Waiver System</p>
         </div>`;
       const adminText = `Address Verification Required\n\nGuest: ${guestName}\nAdditional Guests: ${guestsDisplay}\nAddress: ${memberAddress}\n\nApprove: ${approveUrl}\nDeny: ${denyUrl}`;
 
@@ -470,13 +431,20 @@ exports.handler = async (event) => {
 
     // ── Matched path ──
 
-    // Address master: look up by formatted street (house number + matched street name)
+    // Address master lookup and create
     try {
       const addrRes  = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${formattedStreet}"`, TOKEN);
       const addrData = JSON.parse(addrRes.body);
+      console.log(`Address master lookup for "${formattedStreet}": ${addrData.records ? addrData.records.length : 0} records found`);
 
       if (!addrData.records || addrData.records.length === 0) {
-        await airtableCreate(BASE, ADDRESS_TABLE, { 'Street Address': formattedStreet }, TOKEN);
+        const createRes  = await airtableCreate(BASE, ADDRESS_TABLE, { 'Street Address': formattedStreet }, TOKEN);
+        const createData = JSON.parse(createRes.body);
+        if (createRes.status === 200 || createRes.status === 201) {
+          console.log(`Address master created: "${formattedStreet}" (id: ${createData.id})`);
+        } else {
+          console.error(`Address master create FAILED (${createRes.status}):`, createRes.body);
+        }
 
         const notifyHtml = `
           <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:24px;">
@@ -487,7 +455,7 @@ exports.handler = async (event) => {
               <tr><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Guest Name</td><td style="padding:10px 14px;color:#333;">${guestName}</td></tr>
               <tr style="background:#f8f5ef;"><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Member Name</td><td style="padding:10px 14px;color:#333;">${memberName}</td></tr>
             </table>
-            <p style="color:#999;font-size:12px;text-align:center;">Prosperity Lakes Club · Guest Waiver System</p>
+            <p style="color:#999;font-size:12px;text-align:center;">Prosperity Lakes Club - Guest Waiver System</p>
           </div>`;
         const notifyText = `New Address Added: ${formattedStreet}\nGuest: ${guestName}\nMember: ${memberName}`;
 
@@ -497,6 +465,8 @@ exports.handler = async (event) => {
         } catch (err) {
           console.error('Failed to send new address notification:', err.message);
         }
+      } else {
+        console.log(`Address master: existing record found for "${formattedStreet}"`);
       }
     } catch (err) {
       console.error('Address master lookup failed:', err);
@@ -512,12 +482,13 @@ exports.handler = async (event) => {
         'Submission Date':    submissionDateISO,
         'Guest Signature':    guestSignature,
         'Resident Signature': residentSignature,
-        'Waiver Text':        `Assumption of Risk & Indemnity Agreement — Guest confirmed reading and voluntary agreement on ${submissionDate}.`
+        'Waiver Text':        `Assumption of Risk & Indemnity Agreement - Guest confirmed reading and voluntary agreement on ${submissionDate}.`
       }, TOKEN);
       const waiverData = JSON.parse(waiverRes.body);
       if (waiverRes.status !== 200) {
         throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
       }
+      console.log('Waiver saved to Airtable:', waiverData.id);
     } catch (err) {
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Airtable error: ' + err.message }) };
     }
@@ -529,9 +500,9 @@ exports.handler = async (event) => {
         submissionDate, guestSignature, residentSignature
       });
 
-      const pdfBase64  = pdfBuffer.toString('base64');
-      const safeGuest  = guestName.replace(/[^a-z0-9]/gi, '_');
-      const filename   = `Waiver_${safeGuest}_${submissionDateISO}.pdf`;
+      const pdfBase64 = pdfBuffer.toString('base64');
+      const safeGuest = guestName.replace(/[^a-z0-9]/gi, '_');
+      const filename  = `Waiver_${safeGuest}_${submissionDateISO}.pdf`;
 
       const confirmHtml = `
         <div style="font-family:Georgia,serif;padding:24px;">
