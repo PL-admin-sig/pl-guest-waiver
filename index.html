@@ -309,6 +309,68 @@
       .sig-row { grid-template-columns: 1fr; }
       .address-row { grid-template-columns: 1fr; }
     }
+
+    /* Pending overlay */
+    .pending-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(33, 70, 94, 0.96);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+      text-align: center;
+    }
+    .pending-overlay.active { display: flex; }
+    .pending-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      color: white;
+      font-size: 28px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px;
+    }
+    .pending-overlay h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(20px, 5vw, 26px);
+      color: #fff;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+    .pending-overlay p {
+      font-size: 15px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.7;
+      max-width: 420px;
+      margin-bottom: 36px;
+    }
+    .pending-continue-btn {
+      padding: 14px 40px;
+      background: white;
+      color: var(--brand-dark);
+      border: none;
+      border-radius: 4px;
+      font-family: 'Playfair Display', serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .pending-continue-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .pending-status-msg {
+      margin-top: 16px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.65);
+      min-height: 20px;
+    }
   </style>
 </head>
 <body>
@@ -432,6 +494,14 @@
   <p>Thank you. Your guest waiver for Prosperity Lakes Club<br>has been successfully recorded.</p>
 </div>
 
+<div class="pending-overlay" id="pendingOverlay">
+  <div class="pending-icon">&#9998;</div>
+  <h2>Address Verification Required</h2>
+  <p>Please speak with an attendant to verify your address.<br>Once approved, tap <strong>Continue</strong> to complete your submission.</p>
+  <button class="pending-continue-btn" id="pendingContinueBtn" onclick="checkPendingStatus()">Continue</button>
+  <div class="pending-status-msg" id="pendingStatusMsg"></div>
+</div>
+
 <script>
   const now      = new Date();
   const today    = now.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
@@ -441,6 +511,10 @@
   document.getElementById('residentDate').textContent = 'Date: ' + today;
 
   let guestSigCtx, residentSigCtx;
+
+  // Pending state — stored so Continue button can resubmit
+  let pendingId       = null;
+  let pendingFormData = null;
 
   function initCanvas(id) {
     const canvas = document.getElementById(id);
@@ -486,6 +560,101 @@
     const errEl = document.getElementById('errorMsg');
     errEl.style.display = 'block';
     errEl.textContent = msg;
+  }
+
+  function restoreForm(data) {
+    // Restore title radio
+    if (data.title) {
+      const radios = document.querySelectorAll('input[name="title"]');
+      radios.forEach(r => { if (r.value === data.title) r.checked = true; });
+    }
+    document.getElementById('guestName').value  = data.guestName  || '';
+    document.getElementById('memberName').value = data.memberName || '';
+    document.getElementById('addrCity').value   = data.addrCity   || '';
+    document.getElementById('addrState').value  = data.addrState  || '';
+    document.getElementById('addrZip').value    = data.addrZip    || '';
+    // Street address: restore on approve, clear on deny (caller handles this)
+    if (data.addrStreet !== undefined) {
+      document.getElementById('addrStreet').value = data.addrStreet;
+    }
+    // Restore additional guests
+    const guests = (data.additionalGuests && data.additionalGuests !== 'None')
+      ? data.additionalGuests.split('; ') : [];
+    ['addGuest1','addGuest2','addGuest3'].forEach((id, i) => {
+      document.getElementById(id).value = guests[i] || '';
+    });
+    // Clear signatures — guest must re-sign
+    clearSig('guestSigCanvas', guestSigCtx);
+    clearSig('residentSigCanvas', residentSigCtx);
+    document.getElementById('agreeCheck').checked = false;
+  }
+
+  function showPendingOverlay() {
+    document.getElementById('pendingOverlay').classList.add('active');
+    document.getElementById('pendingContinueBtn').disabled = false;
+    document.getElementById('pendingStatusMsg').textContent = '';
+  }
+
+  function hidePendingOverlay() {
+    document.getElementById('pendingOverlay').classList.remove('active');
+  }
+
+  async function checkPendingStatus() {
+    if (!pendingId) return;
+
+    const btn       = document.getElementById('pendingContinueBtn');
+    const statusMsg = document.getElementById('pendingStatusMsg');
+    btn.disabled    = true;
+    statusMsg.textContent = 'Checking…';
+
+    try {
+      const res    = await fetch('/.netlify/functions/check-pending?id=' + pendingId);
+      const result = await res.json();
+
+      if (result.status === 'pending') {
+        // Not yet decided — let guest tap again later
+        statusMsg.textContent = 'Not approved yet. Please speak with an attendant.';
+        btn.disabled = false;
+        return;
+      }
+
+      if (result.status === 'approved') {
+        // Restore form with street address retained, clear signatures
+        hidePendingOverlay();
+        const fd = result.formData || pendingFormData || {};
+        restoreForm({ ...fd, addrStreet: fd.addrStreet || document.getElementById('addrStreet').value });
+        // Reset submit button
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Waiver';
+        document.getElementById('errorMsg').style.display = 'none';
+        pendingId = null;
+        pendingFormData = null;
+        return;
+      }
+
+      if (result.status === 'denied') {
+        // Restore form but clear street address and signatures
+        hidePendingOverlay();
+        const fd = result.formData || pendingFormData || {};
+        restoreForm({ ...fd, addrStreet: '' });
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Waiver';
+        showError('Address could not be verified. Please re-enter your street address.');
+        pendingId = null;
+        pendingFormData = null;
+        return;
+      }
+
+      // Unexpected status
+      statusMsg.textContent = 'Unexpected response. Please try again.';
+      btn.disabled = false;
+
+    } catch (err) {
+      statusMsg.textContent = 'Connection error. Please try again.';
+      btn.disabled = false;
+    }
   }
 
   window.addEventListener('load', () => {
@@ -539,9 +708,13 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          title:             title,
           guestName:         fullGuest,
           memberName:        memberName,
           memberAddress:     fullAddr,
+          addrCity:          city,
+          addrState:         state,
+          addrZip:           zip,
           additionalGuests:  addGuests || 'None',
           submissionDate:    today,
           submissionDateISO: todayISO,
@@ -551,10 +724,31 @@
       });
 
       const result = await res.json();
+
+      if (result.status === 'pending') {
+        // Address not matched — store pending ID and show overlay
+        pendingId = result.pendingId;
+        pendingFormData = {
+          title,
+          guestName,
+          memberName,
+          addrStreet: street,
+          addrCity:   city,
+          addrState:  state,
+          addrZip:    zip,
+          additionalGuests: addGuests || 'None'
+        };
+        btn.disabled = false;
+        btn.textContent = 'Submit Waiver';
+        showPendingOverlay();
+        return;
+      }
+
       if (!res.ok || result.error) {
         throw new Error(result.error || 'Submission failed');
       }
 
+      // Success
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
 
