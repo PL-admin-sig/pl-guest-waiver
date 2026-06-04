@@ -74,6 +74,14 @@ function sendEmail(to, from, subject, text, html, sendgridKey) {
   });
 }
 
+function logSendGridResponse(label, status, body) {
+  if (status >= 200 && status < 300) {
+    console.log(`[SendGrid] ${label} — OK (${status})`);
+  } else {
+    console.error(`[SendGrid] ${label} — FAILED (${status}): ${body}`);
+  }
+}
+
 // ── Fuzzy street matching ────────────────────────────────────────────────────
 
 const STREET_SUFFIXES = [
@@ -308,11 +316,12 @@ exports.handler = async (event) => {
     const emailText = `Address Verification Required\n\nGuest: ${guestName}\nAdditional Guests: ${additionalGuestsDisplay}\nAddress: ${memberAddress}\n\nApprove: ${approveUrl}\nDeny: ${denyUrl}`;
 
     try {
-      await sendEmail(
+      const emailResult = await sendEmail(
         TO_EMAIL, FROM_EMAIL,
         `Address Verification Required — ${guestName}`,
         emailText, emailHtml, SENDGRID_KEY
       );
+      logSendGridResponse('admin notification', emailResult.status, emailResult.body);
     } catch (err) {
       console.error('Failed to send admin email:', err.message);
     }
@@ -377,11 +386,12 @@ exports.handler = async (event) => {
       `;
       const notifyText = `New Address Added: ${memberAddress}\nGuest: ${guestName}\nMember: ${memberName}`;
       try {
-        await sendEmail(
+        const notifyResult = await sendEmail(
           TO_EMAIL, FROM_EMAIL,
           `New Address Added — ${memberAddress}`,
           notifyText, notifyHtml, SENDGRID_KEY
         );
+        logSendGridResponse('new address notification', notifyResult.status, notifyResult.body);
       } catch (err) {
         console.error('Failed to send new address notification:', err.message);
       }
@@ -431,7 +441,7 @@ Guest confirmed reading and voluntary agreement on ${submissionDate}.
 Signatures captured digitally — view in Airtable.
     `.trim()).toString('base64');
 
-    await sendEmail(
+    const emailResult = await sendEmail(
       TO_EMAIL, FROM_EMAIL,
       `New Guest Waiver — ${guestName}`,
       `New waiver: ${guestName} | ${memberName} | ${memberAddress}`,
@@ -446,6 +456,7 @@ Signatures captured digitally — view in Airtable.
       </div>`,
       SENDGRID_KEY
     );
+    logSendGridResponse('confirmation email', emailResult.status, emailResult.body);
   } catch (err) {
     console.error('SendGrid error:', err.message);
   }
