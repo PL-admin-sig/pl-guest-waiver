@@ -448,19 +448,11 @@ exports.handler = async (event) => {
     console.log(`Formatted: "${formattedStreet}"`);
 
     // 4. Address master lookup
-    let addressFound      = false;
-    let addressRecordId   = null;
-    let existingWaiverIds = [];
-    let existingNamesRaw  = '';
+    let addressFound = false;
     try {
       const r    = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${formattedStreet}"`, TOKEN);
       const recs = JSON.parse(r.body).records || [];
       addressFound = recs.length > 0;
-      if (addressFound) {
-        addressRecordId   = recs[0].id;
-        existingWaiverIds = recs[0].fields['Guest Waivers'] || [];
-        existingNamesRaw  = recs[0].fields['Guest Names']   || '';
-      }
       console.log(`Address master lookup "${formattedStreet}": ${addressFound ? 'found' : 'not found'}`);
     } catch (err) { console.error('Address master lookup failed:', err); }
 
@@ -483,41 +475,6 @@ exports.handler = async (event) => {
       const waiverData = JSON.parse(waiverRes.body);
       if (waiverRes.status !== 200) throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
       console.log('Waiver saved:', waiverData.id);
-
-      // Update address master: link waiver + append new guest names (deduplicated, no title)
-      if (addressRecordId) {
-        try {
-          // Strip title from primary guest name for consistency with additional guests
-          const rawTitle       = data.title || '';
-          const cleanGuestName = rawTitle ? guestName.slice(rawTitle.length).trim() : guestName.trim();
-
-          // Collect all names from this waiver
-          const allNewNames = [cleanGuestName];
-          if (additionalGuests && additionalGuests !== 'None') {
-            additionalGuests.split('; ').forEach(n => { if (n.trim()) allNewNames.push(n.trim()); });
-          }
-
-          // Deduplicate against existing names (case-insensitive)
-          const existingNames = existingNamesRaw
-            ? existingNamesRaw.split('; ').map(n => n.trim()).filter(Boolean)
-            : [];
-          const existingLower = existingNames.map(n => n.toLowerCase());
-          const uniqueNew     = allNewNames.filter(n => !existingLower.includes(n.toLowerCase()));
-          const updatedNames  = [...existingNames, ...uniqueNew].join('; ');
-
-          // Single PATCH: update both Guest Waivers and Guest Names
-          const updatedWaiverIds = [...existingWaiverIds, waiverData.id];
-          const linkRes = await airtableUpdate(BASE, ADDRESS_TABLE, addressRecordId, {
-            'Guest Waivers': updatedWaiverIds,
-            'Guest Names':   updatedNames
-          }, TOKEN);
-          if (linkRes.status === 200) {
-            console.log(`Address master updated: ${uniqueNew.length} new name(s) added, waiver linked`);
-          } else {
-            console.error(`Address master update failed (${linkRes.status}):`, linkRes.body);
-          }
-        } catch (err) { console.error('Failed to update address master:', err); }
-      }
     } catch (err) {
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Airtable error: ' + err.message }) };
     }
@@ -529,7 +486,13 @@ exports.handler = async (event) => {
         additionalGuests, submissionDate, guestSignature, residentSignature
       });
       const pdfBase64 = pdfBuffer.toString('base64');
-      const filename  = `Waiver_${guestName.replace(/[^a-z0-9]/gi, '_')}_${submissionDateISO}.pdf`;
+
+      // Build filename: "Mr. John Smith, Jane Doe, Bob Jones - Guest Waiver.pdf"
+      const allPdfNames = [guestName];
+      if (additionalGuests && additionalGuests !== 'None') {
+        additionalGuests.split('; ').forEach(n => { if (n.trim()) allPdfNames.push(n.trim()); });
+      }
+      const filename = `${allPdfNames.join(', ').replace(/[\/:\*?"<>|]/g, '')} - Guest Waiver.pdf`;
 
       const confirmHtml = `<div style="font-family:Georgia,serif;padding:24px;">
         <h2 style="color:#21465e;">New Guest Waiver Submitted</h2>
