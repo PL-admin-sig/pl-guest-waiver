@@ -2,22 +2,21 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
-// ── Airtable helper ──────────────────────────────────────────────────────────
+// ── Airtable helpers ─────────────────────────────────────────────────────────
 
 function airtableRequest(method, path, body, token) {
   return new Promise((resolve, reject) => {
     const bodyStr = body ? JSON.stringify(body) : null;
     const options = {
       hostname: 'api.airtable.com',
-      path,
-      method,
+      path, method,
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...(bodyStr && { 'Content-Length': Buffer.byteLength(bodyStr) })
       }
     };
-    const req = https.request(options, (res) => {
+    const req = https.request(options, res => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve({ status: res.statusCode, body: data }));
@@ -29,42 +28,36 @@ function airtableRequest(method, path, body, token) {
 }
 
 function airtableGet(baseId, table, filterFormula, token) {
-  const encoded = encodeURIComponent(filterFormula);
-  const path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encoded}`;
+  const path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
   return airtableRequest('GET', path, null, token);
 }
 
 function airtableCreate(baseId, table, fields, token) {
-  const path = `/v0/${baseId}/${encodeURIComponent(table)}`;
-  return airtableRequest('POST', path, { fields }, token);
+  return airtableRequest('POST', `/v0/${baseId}/${encodeURIComponent(table)}`, { fields }, token);
 }
 
 function airtableUpdate(baseId, table, recordId, fields, token) {
-  const path = `/v0/${baseId}/${encodeURIComponent(table)}/${recordId}`;
-  return airtableRequest('PATCH', path, { fields }, token);
+  return airtableRequest('PATCH', `/v0/${baseId}/${encodeURIComponent(table)}/${recordId}`, { fields }, token);
 }
 
 // ── SendGrid helper ──────────────────────────────────────────────────────────
 
-function sendEmail(to, from, subject, text, html, sendgridKey, attachments = []) {
+function sendEmail(to, from, subject, text, html, key, attachments = []) {
   return new Promise((resolve, reject) => {
     const payload = {
       personalizations: [{ to: [{ email: to }] }],
       from: { email: from, name: 'Prosperity Lakes Club' },
       subject,
-      content: [
-        { type: 'text/plain', value: text },
-        { type: 'text/html',  value: html }
-      ]
+      content: [{ type: 'text/plain', value: text }, { type: 'text/html', value: html }]
     };
-    if (attachments.length > 0) payload.attachments = attachments;
+    if (attachments.length) payload.attachments = attachments;
     const body = JSON.stringify(payload);
     const options = {
       hostname: 'api.sendgrid.com',
       path: '/v3/mail/send',
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${sendgridKey}`,
+        'Authorization': `Bearer ${key}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body)
       }
@@ -80,7 +73,7 @@ function sendEmail(to, from, subject, text, html, sendgridKey, attachments = [])
   });
 }
 
-function logSendGridResponse(label, status, body) {
+function logEmail(label, status, body) {
   if (status >= 200 && status < 300) {
     console.log(`[SendGrid] ${label} — OK (${status})`);
   } else {
@@ -120,23 +113,18 @@ async function generateWaiverPDF(data) {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  const brandDark = rgb(0.129, 0.275, 0.369);
   const brandBlue = rgb(0.294, 0.612, 0.827);
+  const brandDark = rgb(0.129, 0.275, 0.369);
   const gray      = rgb(0.5, 0.5, 0.5);
   const lightGray = rgb(0.788, 0.749, 0.659);
   const black     = rgb(0.133, 0.133, 0.133);
 
-  const pageW = 612, pageH = 792;
-  const marginL = 50, marginR = 50;
+  const pageW = 612, pageH = 792, marginL = 50, marginR = 50;
   const contentW = pageW - marginL - marginR;
 
   function drawParagraph(page, text, x, y, font, size, color, maxWidth) {
-    const charsPerLine = Math.floor(maxWidth / (size * 0.52));
-    const lines = wrapText(text, charsPerLine);
-    for (const line of lines) {
-      page.drawText(line, { x, y, font, size, color });
-      y -= size * 1.5;
-    }
+    const lines = wrapText(text, Math.floor(maxWidth / (size * 0.52)));
+    for (const line of lines) { page.drawText(line, { x, y, font, size, color }); y -= size * 1.5; }
     return y;
   }
 
@@ -153,20 +141,15 @@ async function generateWaiverPDF(data) {
     return y - 18;
   }
 
-  // ── Page 1 ──
   let page = pdfDoc.addPage([pageW, pageH]);
   let y = pageH;
 
-  // Header
   page.drawRectangle({ x: 0, y: pageH - 75, width: pageW, height: 75, color: brandBlue });
-  const title1 = 'PROSPERITY LAKES CLUB';
-  const title2 = 'GUEST WAIVER';
-  page.drawText(title1, { x: (pageW - fontBold.widthOfTextAtSize(title1, 18)) / 2, y: pageH - 38, font: fontBold, size: 18, color: rgb(1,1,1) });
-  page.drawText(title2, { x: (pageW - fontBold.widthOfTextAtSize(title2, 11)) / 2, y: pageH - 58, font: fontBold, size: 11, color: rgb(1,1,1) });
+  const t1 = 'PROSPERITY LAKES CLUB', t2 = 'GUEST WAIVER';
+  page.drawText(t1, { x: (pageW - fontBold.widthOfTextAtSize(t1, 18)) / 2, y: pageH - 38, font: fontBold, size: 18, color: rgb(1,1,1) });
+  page.drawText(t2, { x: (pageW - fontBold.widthOfTextAtSize(t2, 11)) / 2, y: pageH - 58, font: fontBold, size: 11, color: rgb(1,1,1) });
 
   y = pageH - 95;
-
-  // Guest info
   y = drawSectionHeading(page, 'GUEST INFORMATION', y);
   y = drawInfoRow(page, 'Guest Name:', guestName, y);
   y = drawInfoRow(page, 'Member Name:', memberName, y);
@@ -175,54 +158,37 @@ async function generateWaiverPDF(data) {
   y = drawInfoRow(page, 'Submission Date:', submissionDate, y);
   y -= 16;
 
-  // Waiver text
   y = drawSectionHeading(page, 'ASSUMPTION OF RISK & INDEMNITY AGREEMENT', y);
   for (let i = 0; i < WAIVER_PARAGRAPHS.length; i++) {
     y = drawParagraph(page, WAIVER_PARAGRAPHS[i], marginL, y, fontReg, 9, black, contentW);
     if (i < WAIVER_PARAGRAPHS.length - 1) y -= 8;
-    if (y < 160 && i < WAIVER_PARAGRAPHS.length - 1) {
-      page = pdfDoc.addPage([pageW, pageH]);
-      y = pageH - 50;
-    }
+    if (y < 160 && i < WAIVER_PARAGRAPHS.length - 1) { page = pdfDoc.addPage([pageW, pageH]); y = pageH - 50; }
   }
   y -= 16;
 
-  // Add new page if signatures won't fit
-  if (y < 220) {
-    page = pdfDoc.addPage([pageW, pageH]);
-    y = pageH - 50;
-  }
+  if (y < 220) { page = pdfDoc.addPage([pageW, pageH]); y = pageH - 50; }
 
-  // Agreement — use [X] instead of Unicode checkmark to avoid WinAnsi encoding error
   y = drawSectionHeading(page, 'AGREEMENT', y);
   y = drawParagraph(page, '[X]  I have read and fully understand the Assumption of Risk & Indemnity Agreement above, and I voluntarily agree to its terms.', marginL, y, fontReg, 9, black, contentW);
   y -= 20;
 
-  // Signatures
   y = drawSectionHeading(page, 'SIGNATURES', y);
-
-  const sigW = (contentW - 20) / 2;
-  const sigH = 80;
-  const sig1X = marginL;
-  const sig2X = marginL + sigW + 20;
+  const sigW = (contentW - 20) / 2, sigH = 80;
+  const sig1X = marginL, sig2X = marginL + sigW + 20;
 
   page.drawText('GUEST SIGNATURE',    { x: sig1X, y: y + 2, font: fontBold, size: 8, color: gray });
   page.drawText('RESIDENT SIGNATURE', { x: sig2X, y: y + 2, font: fontBold, size: 8, color: gray });
   y -= 10;
-
   page.drawRectangle({ x: sig1X, y: y - sigH, width: sigW, height: sigH, borderColor: lightGray, borderWidth: 0.5 });
   page.drawRectangle({ x: sig2X, y: y - sigH, width: sigW, height: sigH, borderColor: lightGray, borderWidth: 0.5 });
 
   async function embedSig(dataUrl, x, boxY) {
     try {
       if (!dataUrl || !dataUrl.startsWith('data:image/')) return;
-      const imgBuf = Buffer.from(dataUrl.split(',')[1], 'base64');
-      const img    = await pdfDoc.embedPng(imgBuf);
-      const dims   = img.scaleToFit(sigW - 8, sigH - 8);
+      const img  = await pdfDoc.embedPng(Buffer.from(dataUrl.split(',')[1], 'base64'));
+      const dims = img.scaleToFit(sigW - 8, sigH - 8);
       page.drawImage(img, { x: x + 4, y: boxY - sigH + (sigH - dims.height) / 2, width: dims.width, height: dims.height });
-    } catch (e) {
-      console.error('Signature embed error:', e.message);
-    }
+    } catch (e) { console.error('Sig embed error:', e.message); }
   }
 
   await embedSig(guestSignature,    sig1X, y);
@@ -241,9 +207,9 @@ async function generateWaiverPDF(data) {
 // ── Fuzzy street matching ────────────────────────────────────────────────────
 
 const STREET_SUFFIXES = [
-  'terrace','trail','way','cove','place','court','lane',
-  'drive','run','boulevard','blvd','street','st','ave',
-  'avenue','rd','road','dr','ct','pl','ln','ter','trl'
+  'terrace','trail','way','cove','place','court','lane','drive','run',
+  'boulevard','blvd','street','st','ave','avenue','rd','road','dr',
+  'ct','pl','ln','ter','trl'
 ];
 
 function normalize(str) {
@@ -251,35 +217,27 @@ function normalize(str) {
 }
 
 function extractNumber(str) {
-  const match = str.match(/^(\d+)/);
-  return match ? match[1] : '';
+  const m = str.match(/^(\d+)/);
+  return m ? m[1] : '';
 }
 
-function stripNumber(str) {
-  return str.replace(/^\d+\s*/, '').trim();
-}
-
-function removeSuffixes(str) {
-  return str.split(' ').filter(w => !STREET_SUFFIXES.includes(w)).join(' ').trim();
-}
+function stripNumber(str)    { return str.replace(/^\d+\s*/, '').trim(); }
+function removeSuffixes(str) { return str.split(' ').filter(w => !STREET_SUFFIXES.includes(w)).join(' ').trim(); }
 
 function editDistance(a, b) {
   const dp = Array.from({ length: a.length + 1 }, (_, i) =>
     Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
   );
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
       dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-    }
-  }
   return dp[a.length][b.length];
 }
 
 function wordSimilarity(word, target) {
   if (word === target) return 1;
   if (target.includes(word) || word.includes(target)) return 0.9;
-  const dist = editDistance(word, target);
-  return Math.max(0, 1 - dist / Math.max(word.length, target.length));
+  return Math.max(0, 1 - editDistance(word, target) / Math.max(word.length, target.length));
 }
 
 function matchStreetName(submittedAddress, streetNames) {
@@ -288,23 +246,64 @@ function matchStreetName(submittedAddress, streetNames) {
   const subWords = noSuffix.split(' ').filter(w => w.length > 1);
 
   let bestMatch = null, bestScore = 0;
-
   for (const street of streetNames) {
-    const streetNorm     = normalize(street);
-    const streetNoSuffix = removeSuffixes(streetNorm);
-    const streetWords    = streetNoSuffix.split(' ').filter(w => w.length > 1);
-
-    let matchedCount = 0;
+    const streetWords = removeSuffixes(normalize(street)).split(' ').filter(w => w.length > 1);
+    let matchedCount  = 0;
     for (const sw of streetWords) {
-      const best = Math.max(...subWords.map(w => wordSimilarity(w, sw)));
-      if (best >= 0.75) matchedCount++;
+      if (Math.max(...subWords.map(w => wordSimilarity(w, sw))) >= 0.75) matchedCount++;
     }
-
     const score = streetWords.length > 0 ? matchedCount / streetWords.length : 0;
     if (score > bestScore) { bestScore = score; bestMatch = street; }
   }
-
   return { matched: bestScore >= 0.5, bestMatch, score: bestScore };
+}
+
+// ── Email templates ──────────────────────────────────────────────────────────
+
+function buildEmailTable(rows) {
+  return rows.map(([label, value], i) =>
+    `<tr style="background:${i % 2 === 0 ? '#f8f5ef' : 'white'};">
+      <td style="padding:10px 14px;font-weight:bold;color:#21465e;width:40%;">${label}</td>
+      <td style="padding:10px 14px;color:#333;">${value}</td>
+    </tr>`
+  ).join('');
+}
+
+function emailWrapper(title, bodyHtml) {
+  return `<div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:24px;">
+    <h2 style="color:#21465e;border-bottom:2px solid #4b9cd3;padding-bottom:10px;">${title}</h2>
+    ${bodyHtml}
+    <p style="color:#999;font-size:12px;text-align:center;margin-top:24px;">Prosperity Lakes Club - Guest Waiver System</p>
+  </div>`;
+}
+
+function buildNewResidentEmail(guestName, guestsDisplay, memberAddress, approveUrl, denyUrl) {
+  const html = emailWrapper('New Address — Prosperity Lakes Club', `
+    <p style="color:#444;font-size:15px;">A guest has indicated they recently moved. Please check CINC to verify their address before taking action.</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      ${buildEmailTable([['Guest Name', guestName], ['Additional Guests', guestsDisplay], ['Submitted Address', memberAddress]])}
+    </table>
+    <div style="margin:28px 0;text-align:center;">
+      <a href="${approveUrl}" style="background:#2d6a4f;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;margin-right:16px;">Approve</a>
+      <a href="${denyUrl}"    style="background:#c0392b;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;">Deny</a>
+    </div>`);
+  const text = `New Address - Please check CINC\n\nGuest: ${guestName}\nAdditional Guests: ${guestsDisplay}\nAddress: ${memberAddress}\n\nApprove: ${approveUrl}\nDeny: ${denyUrl}`;
+  return { html, text };
+}
+
+function buildRepeatedFailureEmail(guestName, guestsDisplay, memberAddress, retryUrl, deleteUrl) {
+  const html = emailWrapper('Could Not Verify Address — Prosperity Lakes Club', `
+    <p style="color:#444;font-size:15px;">A guest waiver could not be verified after multiple attempts. Please have the resident confirm their address in CINC before taking action.</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      ${buildEmailTable([['Guest Name', guestName], ['Additional Guests', guestsDisplay], ['Submitted Address', memberAddress]])}
+    </table>
+    <div style="margin:28px 0;text-align:center;">
+      <a href="${retryUrl}"  style="background:#2d6a4f;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;margin-right:16px;">Retry</a>
+      <a href="${deleteUrl}" style="background:#7f1d1d;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;">Delete</a>
+    </div>
+    <p style="color:#888;font-size:13px;text-align:center;">Delete will cancel this submission entirely. The guest will be asked to start over.</p>`);
+  const text = `Could not verify address - Have resident confirm address in CINC\n\nGuest: ${guestName}\nAdditional Guests: ${guestsDisplay}\nAddress: ${memberAddress}\n\nRetry (returns guest to form): ${retryUrl}\nDelete (cancels submission): ${deleteUrl}`;
+  return { html, text };
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -318,13 +317,14 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
-    if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+    if (event.httpMethod !== 'POST')   return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
 
     let data;
     try { data = JSON.parse(event.body); }
     catch { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid request body' }) }; }
 
     const {
+      pendingType,
       guestName, memberName, memberAddress, additionalGuests,
       submissionDate, submissionDateISO, guestSignature, residentSignature,
       addrCity, addrState, addrZip
@@ -341,40 +341,35 @@ exports.handler = async (event) => {
     const FROM_EMAIL    = process.env.FROM_EMAIL;
     const SITE_URL      = process.env.URL || 'https://pl-guestwaiver.netlify.app';
 
-    // ── 1. Fetch street names ──
-    let streetNames = [];
-    try {
-      const streetsRes  = await airtableGet(BASE, STREETS_TABLE, 'NOT({Street Name} = "")', TOKEN);
-      const streetsData = JSON.parse(streetsRes.body);
-      streetNames = (streetsData.records || []).map(r => r.fields['Street Name']).filter(Boolean);
-    } catch (err) {
-      console.error('Failed to fetch street names:', err);
-    }
-
-    // Extract house number and street for matching
     const submittedStreet = memberAddress ? memberAddress.split(',')[0].trim() : '';
     const houseNumber     = extractNumber(submittedStreet);
     const safeStreet      = typeof submittedStreet === 'string' ? submittedStreet : '';
+    const guestsDisplay   = (additionalGuests && additionalGuests !== 'None') ? additionalGuests : 'None';
 
-    // ── 2. Fuzzy match ──
-    const { matched, bestMatch } = matchStreetName(safeStreet, streetNames);
+    // ── PATH A: Frontend-triggered pending flow ───────────────────────────
+    if (pendingType === 'new_resident' || pendingType === 'repeated_failure') {
 
-    // Build properly formatted street using matched street name + house number
-    const formattedStreet = (matched && bestMatch && houseNumber)
-      ? `${houseNumber} ${bestMatch}`
-      : submittedStreet;
+      // For new_resident: fuzzy-match to get properly formatted address for master
+      let formattedAddress = memberAddress;
+      if (pendingType === 'new_resident' && houseNumber) {
+        let streetNames = [];
+        try {
+          const r = await airtableGet(BASE, STREETS_TABLE, 'NOT({Street Name} = "")', TOKEN);
+          streetNames = (JSON.parse(r.body).records || []).map(rec => rec.fields['Street Name']).filter(Boolean);
+        } catch (e) { console.error('Street names fetch (pending path):', e); }
 
-    console.log(`Address match: submitted="${submittedStreet}" matched=${matched} bestMatch="${bestMatch}" formatted="${formattedStreet}"`);
+        const { matched, bestMatch } = matchStreetName(safeStreet, streetNames);
+        if (matched && bestMatch) {
+          const fmtStreet  = `${houseNumber} ${bestMatch}`;
+          const cityBlock  = [addrCity, [addrState, addrZip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+          formattedAddress = cityBlock ? `${fmtStreet}, ${cityBlock}` : fmtStreet;
+        }
+      }
 
-    if (!matched) {
-      // ── Pending path ──
-      const pendingId    = crypto.randomBytes(16).toString('hex');
-      const approveToken = crypto.createHmac('sha256', TOKEN).update(pendingId + 'approve').digest('hex');
-      const denyToken    = crypto.createHmac('sha256', TOKEN).update(pendingId + 'deny').digest('hex');
-
-      const formData = JSON.stringify({
+      const pendingId  = crypto.randomBytes(16).toString('hex');
+      const formData   = JSON.stringify({
         title:        data.title || '',
-        guestName,    memberName,
+        guestName, memberName,
         addrStreet:   submittedStreet,
         addrCity:     addrCity  || '',
         addrState:    addrState || '',
@@ -387,7 +382,7 @@ exports.handler = async (event) => {
           'Pending ID':        pendingId,
           'Guest Name':        guestName,
           'Member Name':       memberName,
-          'Full Address':      memberAddress,
+          'Full Address':      formattedAddress,
           'Additional Guests': additionalGuests || 'None',
           'Submission Date':   submissionDateISO,
           'Status':            'pending',
@@ -398,139 +393,116 @@ exports.handler = async (event) => {
         return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to process submission' }) };
       }
 
-      const approveUrl  = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=approve&token=${approveToken}`;
-      const denyUrl     = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=deny&token=${denyToken}`;
-      const guestsDisplay = (additionalGuests && additionalGuests !== 'None') ? additionalGuests : 'None';
+      if (pendingType === 'new_resident') {
+        const approveToken = crypto.createHmac('sha256', TOKEN).update(pendingId + 'approve').digest('hex');
+        const denyToken    = crypto.createHmac('sha256', TOKEN).update(pendingId + 'deny').digest('hex');
+        const approveUrl   = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=approve&token=${approveToken}`;
+        const denyUrl      = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=deny&token=${denyToken}`;
+        const { html, text } = buildNewResidentEmail(guestName, guestsDisplay, formattedAddress, approveUrl, denyUrl);
+        try {
+          const r = await sendEmail(TO_EMAIL, FROM_EMAIL, 'New Address - Please check CINC', text, html, SENDGRID_KEY);
+          logEmail('new resident email', r.status, r.body);
+        } catch (err) { console.error('New resident email error:', err.message); }
 
-      const adminHtml = `
-        <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:24px;">
-          <h2 style="color:#21465e;border-bottom:2px solid #4b9cd3;padding-bottom:10px;">Prosperity Lakes Club — Address Verification Required</h2>
-          <p style="color:#444;font-size:15px;">A guest waiver submission could not be matched to a known street address and requires your review.</p>
-          <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-            <tr style="background:#f8f5ef;"><td style="padding:10px 14px;font-weight:bold;color:#21465e;width:40%;">Guest Name</td><td style="padding:10px 14px;color:#333;">${guestName}</td></tr>
-            <tr><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Additional Guests</td><td style="padding:10px 14px;color:#333;">${guestsDisplay}</td></tr>
-            <tr style="background:#f8f5ef;"><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Submitted Address</td><td style="padding:10px 14px;color:#333;">${memberAddress}</td></tr>
-          </table>
-          <div style="margin:28px 0;text-align:center;">
-            <a href="${approveUrl}" style="background:#2d6a4f;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;margin-right:16px;">Approve</a>
-            <a href="${denyUrl}"    style="background:#c0392b;color:white;padding:14px 32px;text-decoration:none;border-radius:4px;font-family:Georgia,serif;font-size:15px;font-weight:bold;">Deny</a>
-          </div>
-          <p style="color:#999;font-size:12px;text-align:center;">Prosperity Lakes Club - Guest Waiver System</p>
-        </div>`;
-      const adminText = `Address Verification Required\n\nGuest: ${guestName}\nAdditional Guests: ${guestsDisplay}\nAddress: ${memberAddress}\n\nApprove: ${approveUrl}\nDeny: ${denyUrl}`;
-
-      try {
-        const r = await sendEmail(TO_EMAIL, FROM_EMAIL, `Address Verification Required — ${guestName}`, adminText, adminHtml, SENDGRID_KEY);
-        logSendGridResponse('admin notification', r.status, r.body);
-      } catch (err) {
-        console.error('Failed to send admin email:', err.message);
+      } else {
+        const retryToken  = crypto.createHmac('sha256', TOKEN).update(pendingId + 'retry').digest('hex');
+        const deleteToken = crypto.createHmac('sha256', TOKEN).update(pendingId + 'delete').digest('hex');
+        const retryUrl    = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=retry&token=${retryToken}`;
+        const deleteUrl   = `${SITE_URL}/.netlify/functions/handle-decision?id=${pendingId}&action=delete&token=${deleteToken}`;
+        const { html, text } = buildRepeatedFailureEmail(guestName, guestsDisplay, memberAddress, retryUrl, deleteUrl);
+        try {
+          const r = await sendEmail(TO_EMAIL, FROM_EMAIL, 'Could not verify address - Have resident confirm address in CINC', text, html, SENDGRID_KEY);
+          logEmail('repeated failure email', r.status, r.body);
+        } catch (err) { console.error('Repeated failure email error:', err.message); }
       }
 
       return { statusCode: 202, headers, body: JSON.stringify({ status: 'pending', pendingId }) };
     }
 
-    // ── Matched path ──
+    // ── PATH B: Normal submission ─────────────────────────────────────────
 
-    // Address master lookup and create
+    // 1. Fetch street names
+    let streetNames = [];
     try {
-      const addrRes  = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${formattedStreet}"`, TOKEN);
-      const addrData = JSON.parse(addrRes.body);
-      console.log(`Address master lookup for "${formattedStreet}": ${addrData.records ? addrData.records.length : 0} records found`);
+      const r = await airtableGet(BASE, STREETS_TABLE, 'NOT({Street Name} = "")', TOKEN);
+      streetNames = (JSON.parse(r.body).records || []).map(rec => rec.fields['Street Name']).filter(Boolean);
+    } catch (err) { console.error('Failed to fetch street names:', err); }
 
-      if (!addrData.records || addrData.records.length === 0) {
-        const createRes  = await airtableCreate(BASE, ADDRESS_TABLE, { 'Street Address': formattedStreet }, TOKEN);
-        const createData = JSON.parse(createRes.body);
-        if (createRes.status === 200 || createRes.status === 201) {
-          console.log(`Address master created: "${formattedStreet}" (id: ${createData.id})`);
-        } else {
-          console.error(`Address master create FAILED (${createRes.status}):`, createRes.body);
-        }
+    // 2. Fuzzy match street name
+    const { matched, bestMatch } = matchStreetName(safeStreet, streetNames);
+    console.log(`Street match: submitted="${submittedStreet}" matched=${matched} bestMatch="${bestMatch}"`);
 
-        const notifyHtml = `
-          <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:24px;">
-            <h2 style="color:#21465e;border-bottom:2px solid #4b9cd3;padding-bottom:10px;">New Address Added — Prosperity Lakes Club</h2>
-            <p style="color:#444;font-size:15px;">A new address has been automatically added to the Address Master. Please verify this was intentional.</p>
-            <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-              <tr style="background:#f8f5ef;"><td style="padding:10px 14px;font-weight:bold;color:#21465e;">New Address</td><td style="padding:10px 14px;color:#333;">${formattedStreet}</td></tr>
-              <tr><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Guest Name</td><td style="padding:10px 14px;color:#333;">${guestName}</td></tr>
-              <tr style="background:#f8f5ef;"><td style="padding:10px 14px;font-weight:bold;color:#21465e;">Member Name</td><td style="padding:10px 14px;color:#333;">${memberName}</td></tr>
-            </table>
-            <p style="color:#999;font-size:12px;text-align:center;">Prosperity Lakes Club - Guest Waiver System</p>
-          </div>`;
-        const notifyText = `New Address Added: ${formattedStreet}\nGuest: ${guestName}\nMember: ${memberName}`;
-
-        try {
-          const r = await sendEmail(TO_EMAIL, FROM_EMAIL, `New Address Added — ${formattedStreet}`, notifyText, notifyHtml, SENDGRID_KEY);
-          logSendGridResponse('new address notification', r.status, r.body);
-        } catch (err) {
-          console.error('Failed to send new address notification:', err.message);
-        }
-      } else {
-        console.log(`Address master: existing record found for "${formattedStreet}"`);
-      }
-    } catch (err) {
-      console.error('Address master lookup failed:', err);
+    if (!matched) {
+      return { statusCode: 200, headers, body: JSON.stringify({ status: 'street_error' }) };
     }
 
-    // ── Submit waiver to Airtable ──
+    // 3. Format address using matched street name
+    const formattedStreet  = (bestMatch && houseNumber) ? `${houseNumber} ${bestMatch}` : submittedStreet;
+    const cityBlock        = [addrCity, [addrState, addrZip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const formattedAddress = cityBlock ? `${formattedStreet}, ${cityBlock}` : formattedStreet;
+    console.log(`Formatted: "${formattedStreet}"`);
+
+    // 4. Look up full address in Address Master
+    let addressFound = false;
+    try {
+      const r    = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${formattedStreet}"`, TOKEN);
+      const recs = JSON.parse(r.body).records || [];
+      addressFound = recs.length > 0;
+      console.log(`Address master lookup "${formattedStreet}": ${addressFound ? 'found' : 'not found'}`);
+    } catch (err) { console.error('Address master lookup failed:', err); }
+
+    if (!addressFound) {
+      return { statusCode: 200, headers, body: JSON.stringify({ status: 'house_error' }) };
+    }
+
+    // 5. Save waiver to Airtable
     try {
       const waiverRes  = await airtableCreate(BASE, WAIVER_TABLE, {
         'Guest Name':         guestName,
         'Member Name':        memberName,
-        'Member Address':     memberAddress,
+        'Member Address':     formattedAddress,
         'Additional Guests':  additionalGuests || 'None',
         'Submission Date':    submissionDateISO,
         'Guest Signature':    guestSignature,
         'Resident Signature': residentSignature,
-        'Waiver Text':        `Assumption of Risk & Indemnity Agreement - Guest confirmed reading and voluntary agreement on ${submissionDate}.`
+        'Waiver Text':        `Assumption of Risk & Indemnity Agreement - Guest confirmed voluntary agreement on ${submissionDate}.`
       }, TOKEN);
       const waiverData = JSON.parse(waiverRes.body);
-      if (waiverRes.status !== 200) {
-        throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
-      }
-      console.log('Waiver saved to Airtable:', waiverData.id);
+      if (waiverRes.status !== 200) throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
+      console.log('Waiver saved:', waiverData.id);
     } catch (err) {
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Airtable error: ' + err.message }) };
     }
 
-    // ── Generate PDF and send confirmation email ──
+    // 6. Generate PDF and send confirmation email
     try {
       const pdfBuffer = await generateWaiverPDF({
-        guestName, memberName, memberAddress, additionalGuests,
-        submissionDate, guestSignature, residentSignature
+        guestName, memberName, memberAddress: formattedAddress,
+        additionalGuests, submissionDate, guestSignature, residentSignature
       });
-
       const pdfBase64 = pdfBuffer.toString('base64');
-      const safeGuest = guestName.replace(/[^a-z0-9]/gi, '_');
-      const filename  = `Waiver_${safeGuest}_${submissionDateISO}.pdf`;
+      const filename  = `Waiver_${guestName.replace(/[^a-z0-9]/gi, '_')}_${submissionDateISO}.pdf`;
 
-      const confirmHtml = `
-        <div style="font-family:Georgia,serif;padding:24px;">
-          <h2 style="color:#21465e;">New Guest Waiver Submitted</h2>
-          <p><strong>Guest:</strong> ${guestName}</p>
-          <p><strong>Member:</strong> ${memberName}</p>
-          <p><strong>Address:</strong> ${memberAddress}</p>
-          <p><strong>Additional Guests:</strong> ${additionalGuests || 'None'}</p>
-          <p><strong>Date:</strong> ${submissionDate}</p>
-          <p style="color:#777;font-size:12px;">Signed waiver attached as PDF.</p>
-        </div>`;
-      const confirmText = `New Guest Waiver\n\nGuest: ${guestName}\nMember: ${memberName}\nAddress: ${memberAddress}\nAdditional Guests: ${additionalGuests || 'None'}\nDate: ${submissionDate}\n\nSigned waiver attached as PDF.`;
+      const confirmHtml = `<div style="font-family:Georgia,serif;padding:24px;">
+        <h2 style="color:#21465e;">New Guest Waiver Submitted</h2>
+        <p><strong>Guest:</strong> ${guestName}</p>
+        <p><strong>Member:</strong> ${memberName}</p>
+        <p><strong>Address:</strong> ${formattedAddress}</p>
+        <p><strong>Additional Guests:</strong> ${additionalGuests || 'None'}</p>
+        <p><strong>Date:</strong> ${submissionDate}</p>
+        <p style="color:#777;font-size:12px;">Signed waiver attached as PDF.</p>
+      </div>`;
+      const confirmText = `New Guest Waiver\n\nGuest: ${guestName}\nMember: ${memberName}\nAddress: ${formattedAddress}\nAdditional Guests: ${additionalGuests || 'None'}\nDate: ${submissionDate}\n\nSigned waiver attached as PDF.`;
 
-      const r = await sendEmail(
-        TO_EMAIL, FROM_EMAIL,
-        `New Guest Waiver — ${guestName}`,
-        confirmText, confirmHtml, SENDGRID_KEY,
-        [{ content: pdfBase64, type: 'application/pdf', filename, disposition: 'attachment' }]
-      );
-      logSendGridResponse('confirmation email with PDF', r.status, r.body);
-    } catch (err) {
-      console.error('PDF/email error:', err.message);
-    }
+      const r = await sendEmail(TO_EMAIL, FROM_EMAIL, `New Guest Waiver — ${guestName}`, confirmText, confirmHtml, SENDGRID_KEY,
+        [{ content: pdfBase64, type: 'application/pdf', filename, disposition: 'attachment' }]);
+      logEmail('confirmation email with PDF', r.status, r.body);
+    } catch (err) { console.error('PDF/email error:', err.message); }
 
     return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
 
   } catch (topErr) {
-    console.error('Unhandled exception in submit-waiver:', topErr);
+    console.error('Unhandled exception:', topErr);
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error: ' + (topErr.message || String(topErr)) }) };
   }
 };
