@@ -371,6 +371,69 @@
       color: rgba(255,255,255,0.65);
       min-height: 20px;
     }
+
+    /* Moved-hint section */
+    .moved-hint {
+      display: none;
+      background: white;
+      border: 1.5px solid var(--border);
+      border-left: 3px solid var(--brand);
+      border-radius: 4px;
+      padding: 14px 16px;
+      margin-top: 8px;
+    }
+    .moved-hint-text {
+      font-size: 13px;
+      color: var(--brand-dark);
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+    .moved-hint-btn {
+      padding: 9px 20px;
+      background: var(--brand-dark);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-family: 'Source Serif 4', serif;
+      font-size: 13px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.2s;
+    }
+    .moved-hint-btn:hover { background: var(--brand); }
+    .moved-confirm {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .moved-confirm-text {
+      font-size: 13px;
+      color: #555;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .moved-confirm-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .moved-confirm-yes {
+      padding: 9px 20px;
+      background: var(--success);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-family: 'Source Serif 4', serif;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .moved-confirm-return {
+      padding: 9px 20px;
+      background: white;
+      color: var(--brand-dark);
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      font-family: 'Source Serif 4', serif;
+      font-size: 13px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -415,6 +478,17 @@
       <div class="field-group">
         <label>Street</label>
         <input type="text" id="addrStreet" placeholder="Street address" required>
+      </div>
+      <div class="moved-hint" id="movedHint">
+        <p class="moved-hint-text">Did you move recently? If so, there may be a discrepancy in our records.</p>
+        <button type="button" class="moved-hint-btn" id="movedHintBtn" onclick="showMovedConfirm()">I recently moved</button>
+        <div class="moved-confirm" id="movedConfirm">
+          <p class="moved-confirm-text">Please confirm that you'd like an attendant to assist with your address.</p>
+          <div class="moved-confirm-btns">
+            <button type="button" class="moved-confirm-yes" onclick="confirmMoved()">Yes, notify attendant</button>
+            <button type="button" class="moved-confirm-return" onclick="cancelMoved()">Return</button>
+          </div>
+        </div>
       </div>
       <div class="address-row">
         <div class="field-group">
@@ -512,10 +586,13 @@
 
   let guestSigCtx, residentSigCtx;
 
-  // Pending state — stored so Continue button can resubmit
-  let pendingId       = null;
-  let pendingFormData = null;
+  // ── State ──
+  let pendingId            = null;
+  let pendingFormData      = null;
+  let houseNumberErrorCount = 0;
+  let movedTriggered       = false;
 
+  // ── Canvas init ───────────────────────────────────────────────────────────
   function initCanvas(id) {
     const canvas = document.getElementById(id);
     const dpr = window.devicePixelRatio || 1;
@@ -552,43 +629,45 @@
   }
 
   function isCanvasBlank(canvas) {
-    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
-    return !data.some(v => v !== 0);
+    return !canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(v => v !== 0);
   }
 
+  // ── Error display ─────────────────────────────────────────────────────────
   function showError(msg) {
-    const errEl = document.getElementById('errorMsg');
-    errEl.style.display = 'block';
-    errEl.textContent = msg;
+    const el = document.getElementById('errorMsg');
+    el.style.display = 'block';
+    el.textContent = msg;
   }
 
-  function restoreForm(data) {
-    // Restore title radio
-    if (data.title) {
-      const radios = document.querySelectorAll('input[name="title"]');
-      radios.forEach(r => { if (r.value === data.title) r.checked = true; });
-    }
-    document.getElementById('guestName').value  = data.guestName  || '';
-    document.getElementById('memberName').value = data.memberName || '';
-    document.getElementById('addrCity').value   = data.addrCity   || '';
-    document.getElementById('addrState').value  = data.addrState  || '';
-    document.getElementById('addrZip').value    = data.addrZip    || '';
-    // Street address: restore on approve, clear on deny (caller handles this)
-    if (data.addrStreet !== undefined) {
-      document.getElementById('addrStreet').value = data.addrStreet;
-    }
-    // Restore additional guests
-    const guests = (data.additionalGuests && data.additionalGuests !== 'None')
-      ? data.additionalGuests.split('; ') : [];
-    ['addGuest1','addGuest2','addGuest3'].forEach((id, i) => {
-      document.getElementById(id).value = guests[i] || '';
-    });
-    // Clear signatures — guest must re-sign
-    clearSig('guestSigCanvas', guestSigCtx);
-    clearSig('residentSigCanvas', residentSigCtx);
-    document.getElementById('agreeCheck').checked = false;
+  // ── Moved-hint UI ─────────────────────────────────────────────────────────
+  function showMovedHint() {
+    document.getElementById('movedHint').style.display = 'block';
   }
 
+  function hideMovedHint() {
+    document.getElementById('movedHint').style.display = 'none';
+    document.getElementById('movedConfirm').style.display = 'none';
+    document.getElementById('movedHintBtn').style.display = '';
+  }
+
+  function showMovedConfirm() {
+    document.getElementById('movedHintBtn').style.display = 'none';
+    document.getElementById('movedConfirm').style.display = 'block';
+  }
+
+  function cancelMoved() {
+    document.getElementById('movedHintBtn').style.display = '';
+    document.getElementById('movedConfirm').style.display = 'none';
+  }
+
+  async function confirmMoved() {
+    if (movedTriggered) return;
+    movedTriggered = true;
+    hideMovedHint();
+    await triggerPendingFlow('new_resident');
+  }
+
+  // ── Pending overlay ───────────────────────────────────────────────────────
   function showPendingOverlay() {
     document.getElementById('pendingOverlay').classList.add('active');
     document.getElementById('pendingContinueBtn').disabled = false;
@@ -599,55 +678,153 @@
     document.getElementById('pendingOverlay').classList.remove('active');
   }
 
+  // ── Form restore ──────────────────────────────────────────────────────────
+  function restoreForm(data) {
+    if (data.title) {
+      document.querySelectorAll('input[name="title"]').forEach(r => { if (r.value === data.title) r.checked = true; });
+    }
+    document.getElementById('guestName').value  = data.guestName  || '';
+    document.getElementById('memberName').value = data.memberName || '';
+    document.getElementById('addrCity').value   = data.addrCity   || '';
+    document.getElementById('addrState').value  = data.addrState  || '';
+    document.getElementById('addrZip').value    = data.addrZip    || '';
+    if (data.addrStreet !== undefined) {
+      document.getElementById('addrStreet').value = data.addrStreet;
+    }
+    const guests = (data.additionalGuests && data.additionalGuests !== 'None')
+      ? data.additionalGuests.split('; ') : [];
+    ['addGuest1','addGuest2','addGuest3'].forEach((id, i) => {
+      document.getElementById(id).value = guests[i] || '';
+    });
+    clearSig('guestSigCanvas', guestSigCtx);
+    clearSig('residentSigCanvas', residentSigCtx);
+    document.getElementById('agreeCheck').checked = false;
+  }
+
+  function resetState() {
+    houseNumberErrorCount = 0;
+    movedTriggered        = false;
+    pendingId             = null;
+    pendingFormData       = null;
+    hideMovedHint();
+    document.getElementById('errorMsg').style.display = 'none';
+    const btn = document.getElementById('submitBtn');
+    btn.disabled    = false;
+    btn.textContent = 'Submit Waiver';
+  }
+
+  // ── Pending trigger (button confirm or auto after 3rd error) ──────────────
+  async function triggerPendingFlow(type) {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled    = true;
+    btn.textContent = 'Please wait...';
+
+    const guestCanvas    = document.getElementById('guestSigCanvas');
+    const residentCanvas = document.getElementById('residentSigCanvas');
+    const title      = document.querySelector('input[name="title"]:checked')?.value || '';
+    const guestName  = document.getElementById('guestName').value.trim();
+    const memberName = document.getElementById('memberName').value.trim();
+    const street     = document.getElementById('addrStreet').value.trim();
+    const city       = document.getElementById('addrCity').value.trim();
+    const state      = document.getElementById('addrState').value.trim();
+    const zip        = document.getElementById('addrZip').value.trim();
+    const fullAddr   = street + ', ' + city + ', ' + state + ' ' + zip;
+    const fullGuest  = (title ? title + ' ' : '') + guestName;
+    const addGuests  = [
+      document.getElementById('addGuest1').value.trim(),
+      document.getElementById('addGuest2').value.trim(),
+      document.getElementById('addGuest3').value.trim()
+    ].filter(Boolean).join('; ');
+
+    try {
+      const res = await fetch('/.netlify/functions/submit-waiver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pendingType:       type,
+          title,
+          guestName:         fullGuest,
+          memberName,
+          memberAddress:     fullAddr,
+          addrCity:          city,
+          addrState:         state,
+          addrZip:           zip,
+          additionalGuests:  addGuests || 'None',
+          submissionDate:    today,
+          submissionDateISO: todayISO,
+          guestSignature:    guestCanvas.toDataURL('image/png'),
+          residentSignature: residentCanvas.toDataURL('image/png')
+        })
+      });
+
+      const result = await res.json();
+
+      if (result.status === 'pending') {
+        pendingId = result.pendingId;
+        pendingFormData = {
+          title, guestName, memberName,
+          addrStreet: street, addrCity: city, addrState: state, addrZip: zip,
+          additionalGuests: addGuests || 'None'
+        };
+        btn.disabled    = false;
+        btn.textContent = 'Submit Waiver';
+        showPendingOverlay();
+      } else {
+        throw new Error(result.error || 'Failed to reach attendant');
+      }
+    } catch (err) {
+      btn.disabled    = false;
+      btn.textContent = 'Submit Waiver';
+      movedTriggered  = false;
+      showError('Could not connect. Please try again or speak with an attendant.');
+    }
+  }
+
+  // ── Check pending status (Continue button) ────────────────────────────────
   async function checkPendingStatus() {
     if (!pendingId) return;
 
     const btn       = document.getElementById('pendingContinueBtn');
     const statusMsg = document.getElementById('pendingStatusMsg');
     btn.disabled    = true;
-    statusMsg.textContent = 'Checking…';
+    statusMsg.textContent = 'Checking...';
 
     try {
       const res    = await fetch('/.netlify/functions/check-pending?id=' + pendingId);
       const result = await res.json();
 
       if (result.status === 'pending') {
-        // Not yet decided — let guest tap again later
         statusMsg.textContent = 'Not approved yet. Please speak with an attendant.';
         btn.disabled = false;
         return;
       }
 
       if (result.status === 'approved') {
-        // Restore form with street address retained, clear signatures
         hidePendingOverlay();
         const fd = result.formData || pendingFormData || {};
         restoreForm({ ...fd, addrStreet: fd.addrStreet || document.getElementById('addrStreet').value });
-        // Reset submit button
-        const submitBtn = document.getElementById('submitBtn');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit Waiver';
-        document.getElementById('errorMsg').style.display = 'none';
-        pendingId = null;
-        pendingFormData = null;
+        resetState();
         return;
       }
 
       if (result.status === 'denied') {
-        // Restore form but clear street address and signatures
         hidePendingOverlay();
         const fd = result.formData || pendingFormData || {};
         restoreForm({ ...fd, addrStreet: '' });
-        const submitBtn = document.getElementById('submitBtn');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit Waiver';
+        resetState();
         showError('Address could not be verified. Please re-enter your street address.');
-        pendingId = null;
-        pendingFormData = null;
         return;
       }
 
-      // Unexpected status
+      // deleted or not_found — full reset, ask guest to start over
+      if (result.status === 'deleted' || result.status === 'not_found') {
+        hidePendingOverlay();
+        restoreForm({ title:'', guestName:'', memberName:'', addrStreet:'', addrCity:'', addrState:'', addrZip:'', additionalGuests:'None' });
+        resetState();
+        showError('Please try again.');
+        return;
+      }
+
       statusMsg.textContent = 'Unexpected response. Please try again.';
       btn.disabled = false;
 
@@ -662,6 +839,7 @@
     residentSigCtx = initCanvas('residentSigCanvas');
   });
 
+  // ── Main submit handler ───────────────────────────────────────────────────
   async function handleSubmit(e) {
     e.preventDefault();
 
@@ -683,21 +861,28 @@
       return;
     }
 
+    // 5-digit house number check
+    const streetRaw  = document.getElementById('addrStreet').value.trim();
+    const houseMatch = streetRaw.match(/^(\d+)/);
+    if (!houseMatch || houseMatch[1].length !== 5) {
+      showError('Please check your address. There might be an issue with the house number.');
+      return;
+    }
+
     const btn = document.getElementById('submitBtn');
-    btn.disabled = true;
+    btn.disabled    = true;
     btn.textContent = 'Submitting...';
 
     const title      = document.querySelector('input[name="title"]:checked')?.value || '';
     const guestName  = document.getElementById('guestName').value.trim();
     const memberName = document.getElementById('memberName').value.trim();
-    const street     = document.getElementById('addrStreet').value.trim();
+    const street     = streetRaw;
     const city       = document.getElementById('addrCity').value.trim();
     const state      = document.getElementById('addrState').value.trim();
     const zip        = document.getElementById('addrZip').value.trim();
     const fullAddr   = street + ', ' + city + ', ' + state + ' ' + zip;
     const fullGuest  = (title ? title + ' ' : '') + guestName;
-
-    const addGuests = [
+    const addGuests  = [
       document.getElementById('addGuest1').value.trim(),
       document.getElementById('addGuest2').value.trim(),
       document.getElementById('addGuest3').value.trim()
@@ -708,13 +893,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title:             title,
-          guestName:         fullGuest,
-          memberName:        memberName,
-          memberAddress:     fullAddr,
-          addrCity:          city,
-          addrState:         state,
-          addrZip:           zip,
+          title, guestName: fullGuest, memberName,
+          memberAddress: fullAddr, addrCity: city, addrState: state, addrZip: zip,
           additionalGuests:  addGuests || 'None',
           submissionDate:    today,
           submissionDateISO: todayISO,
@@ -725,22 +905,31 @@
 
       const result = await res.json();
 
-      if (result.status === 'pending') {
-        // Address not matched — store pending ID and show overlay
-        pendingId = result.pendingId;
-        pendingFormData = {
-          title,
-          guestName,
-          memberName,
-          addrStreet: street,
-          addrCity:   city,
-          addrState:  state,
-          addrZip:    zip,
-          additionalGuests: addGuests || 'None'
-        };
-        btn.disabled = false;
+      // Street name not found in street names table
+      if (result.status === 'street_error') {
+        btn.disabled    = false;
         btn.textContent = 'Submit Waiver';
-        showPendingOverlay();
+        showError('Please check your address. There may be an issue with the street name.');
+        return;
+      }
+
+      // Address not found in address master
+      if (result.status === 'house_error') {
+        btn.disabled    = false;
+        btn.textContent = 'Submit Waiver';
+        houseNumberErrorCount++;
+
+        if (houseNumberErrorCount === 1) {
+          showError('Please check your address. There may be an issue with the house number.');
+          showMovedHint();
+        } else if (houseNumberErrorCount === 2) {
+          showError("Please check the address. Let's try one more time, if something is still wrong then we'll try something else.");
+          // moved hint stays visible
+        } else {
+          // 3rd error — auto-trigger repeated failure pending flow
+          hideMovedHint();
+          await triggerPendingFlow('repeated_failure');
+        }
         return;
       }
 
@@ -749,15 +938,19 @@
       }
 
       // Success
+      houseNumberErrorCount = 0;
+      movedTriggered        = false;
+      hideMovedHint();
       document.getElementById('formContainer').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
 
     } catch (err) {
-      btn.disabled = false;
+      btn.disabled    = false;
       btn.textContent = 'Submit Waiver';
       showError('Submission failed: ' + err.message + '. Please try again.');
     }
   }
 </script>
+
 </body>
 </html>
