@@ -481,7 +481,7 @@ exports.handler = async (event) => {
         'Waiver Text':        `Assumption of Risk & Indemnity Agreement - Guest confirmed voluntary agreement on ${submissionDate}.`
       }, TOKEN);
       const waiverData = JSON.parse(waiverRes.body);
-      if (waiverRes.status !== 200) throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
+      if (waiverRes.status !== 200 && waiverRes.status !== 201) throw new Error(waiverData.error?.message || 'Airtable waiver creation failed');
       console.log('Waiver saved:', waiverData.id);
 
       // Update address master: link waiver + append guest names (deduplicated, no title)
