@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prosperity Lakes Club – Guest Check-In</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300&display=swap');
+
+    :root {
+      --brand:      #4b9cd3;
+      --brand-dark: #21465e;
+      --brand-hover:#3a79a4;
+      --gold:       #b8963e;
+      --gold-light: #d4af6a;
+      --cream:      #f8f5ef;
+      --text:       #2c2c2c;
+      --border:     #c9bfa8;
+      --success:    #2d6a4f;
+      --error:      #c0392b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Source Serif 4', Georgia, serif;
+      background: var(--cream);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--brand);
+      text-align: center;
+      padding: 28px 24px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .header-rule {
+      width: 60px;
+      height: 2px;
+      background: rgba(255,255,255,0.5);
+      margin: 0 auto 14px;
+      position: relative;
+      z-index: 1;
+    }
+    .header-rule.bottom { margin: 14px auto 0; }
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(20px, 5vw, 28px);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+    .header h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(12px, 3vw, 15px);
+      font-weight: 400;
+      color: rgba(255,255,255,0.85);
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      margin-top: 6px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+
+    .section-label {
+      font-family: 'Playfair Display', serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--brand);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .field-group { margin-bottom: 20px; position: relative; }
+    .field-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--brand-dark);
+      margin-bottom: 6px;
+    }
+    .field-group input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      background: white;
+      font-family: 'Source Serif 4', serif;
+      font-size: 15px;
+      color: var(--text);
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+    .field-group input:focus { outline: none; border-color: var(--brand); }
+    .field-group .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 6px;
+      font-style: italic;
+    }
+
+    /* Address autocomplete dropdown */
+    .autocomplete-wrapper { position: relative; }
+    .autocomplete-list {
+      display: none;
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0; right: 0;
+      background: white;
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 20;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .autocomplete-list.active { display: block; }
+    .autocomplete-item {
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--cream);
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover,
+    .autocomplete-item.active-highlight {
+      background: var(--cream);
+    }
+    .autocomplete-empty {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #999;
+      font-style: italic;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      background: var(--brand);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-family: 'Playfair Display', serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .submit-btn:hover { background: var(--brand-hover); }
+    .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .error-msg {
+      color: var(--error);
+      font-size: 13px;
+      margin-top: 12px;
+      text-align: center;
+      display: none;
+      line-height: 1.6;
+    }
+    .field-error {
+      color: var(--error);
+      font-size: 12px;
+      margin-top: 6px;
+      display: none;
+    }
+
+    .success-screen { display: none; text-align: center; padding: 60px 20px; }
+    .success-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: var(--success);
+      color: white;
+      font-size: 30px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px;
+    }
+    .success-screen h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px;
+      color: var(--brand-dark);
+      margin-bottom: 12px;
+    }
+    .success-screen p { font-size: 15px; color: #666; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-rule"></div>
+  <h1>Prosperity Lakes Club</h1>
+  <h2>Guest Check-In</h2>
+  <div class="header-rule bottom"></div>
+</div>
+
+<div class="container" id="formContainer">
+  <form id="checkinForm" onsubmit="handleCheckin(event)">
+
+    <div class="section-label">Resident Information</div>
+    <div class="field-group">
+      <label>Resident Name</label>
+      <input type="text" id="residentName" placeholder="Full name" required>
+    </div>
+    <div class="field-group autocomplete-wrapper">
+      <label>Resident Address</label>
+      <input type="text" id="residentAddress" placeholder="Start typing your address" autocomplete="off" required>
+      <div class="autocomplete-list" id="addressList"></div>
+      <div class="field-error" id="addressError">Please select your address from the list.</div>
+    </div>
+
+    <div class="section-label">Guests</div>
+    <div class="field-group">
+      <label>Guest 1</label>
+      <input type="text" id="guest1" placeholder="Full name">
+      <div class="field-error" id="guest1Error"></div>
+    </div>
+    <div class="field-group">
+      <label>Guest 2</label>
+      <input type="text" id="guest2" placeholder="Full name">
+      <div class="field-error" id="guest2Error"></div>
+    </div>
+    <div class="field-group">
+      <label>Guest 3</label>
+      <input type="text" id="guest3" placeholder="Full name">
+      <div class="field-error" id="guest3Error"></div>
+    </div>
+    <div class="field-group">
+      <label>Guest 4</label>
+      <input type="text" id="guest4" placeholder="Full name">
+      <div class="field-error" id="guest4Error"></div>
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn">Check In</button>
+    <div class="error-msg" id="formError"></div>
+  </form>
+</div>
+
+<div class="container success-screen" id="successScreen">
+  <div class="success-icon">&#10003;</div>
+  <h2>Checked In</h2>
+  <p>Welcome to Prosperity Lakes Club.<br>Your guest check-in has been recorded.</p>
+</div>
+
+<script>
+  let addressOptions = [];
+  let selectedAddress = '';
+
+  // ── Fetch address list once on page load ──────────────────────────────────
+  (async function loadAddresses() {
+    try {
+      const res  = await fetch('/.netlify/functions/checkin');
+      const data = await res.json();
+      addressOptions = Array.isArray(data.addresses) ? data.addresses : [];
+    } catch (err) {
+      console.error('Failed to load address list:', err);
+    }
+  })();
+
+  // ── Address autocomplete ────────────────────────────────────────────────────
+  const addrInput = document.getElementById('residentAddress');
+  const addrList  = document.getElementById('addressList');
+  const addrError = document.getElementById('addressError');
+
+  addrInput.addEventListener('input', () => {
+    selectedAddress = '';
+    addrError.style.display = 'none';
+    const query = addrInput.value.trim().toLowerCase();
+
+    if (!query) { addrList.classList.remove('active'); addrList.innerHTML = ''; return; }
+
+    const matches = addressOptions.filter(a => a.toLowerCase().includes(query)).slice(0, 8);
+
+    if (matches.length === 0) {
+      addrList.innerHTML = '<div class="autocomplete-empty">No matching address found</div>';
+      addrList.classList.add('active');
+      return;
+    }
+
+    addrList.innerHTML = matches.map(a =>
+      `<div class="autocomplete-item" data-value="${a.replace(/"/g, '&quot;')}">${a}</div>`
+    ).join('');
+    addrList.classList.add('active');
+  });
+
+  addrList.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.autocomplete-item');
+    if (!item || !item.dataset.value) return;
+    addrInput.value   = item.dataset.value;
+    selectedAddress   = item.dataset.value;
+    addrList.classList.remove('active');
+    addrList.innerHTML = '';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!addrInput.contains(e.target) && !addrList.contains(e.target)) {
+      addrList.classList.remove('active');
+    }
+  });
+
+  // ── Reset per-field error state when guest inputs are edited ───────────────
+  [1,2,3,4].forEach(i => {
+    const input = document.getElementById(`guest${i}`);
+    const errEl = document.getElementById(`guest${i}Error`);
+    input.addEventListener('input', () => {
+      delete input.dataset.checkedOnce;
+      errEl.style.display = 'none';
+      errEl.textContent   = '';
+    });
+  });
+
+  // ── Submission ───────────────────────────────────────────────────────────────
+  async function handleCheckin(e) {
+    e.preventDefault();
+
+    // Clear previous errors
+    document.getElementById('formError').style.display = 'none';
+    document.getElementById('formError').textContent   = '';
+    addrError.style.display = 'none';
+    [1,2,3,4].forEach(i => {
+      const el = document.getElementById(`guest${i}Error`);
+      el.style.display = 'none';
+      el.textContent   = '';
+    });
+
+    const residentName = document.getElementById('residentName').value.trim();
+    const typedAddress = addrInput.value.trim();
+
+    // Address must be selected from dropdown, OR match an option exactly (case-insensitive)
+    let finalAddress = selectedAddress;
+    if (!finalAddress) {
+      const exact = addressOptions.find(a => a.toLowerCase() === typedAddress.toLowerCase());
+      if (exact) finalAddress = exact;
+    }
+
+    if (!residentName) {
+      const err = document.getElementById('formError');
+      err.textContent = 'Resident name is required.';
+      err.style.display = 'block';
+      return;
+    }
+
+    if (!finalAddress) {
+      addrError.style.display = 'block';
+      return;
+    }
+
+    const guestNames = [1,2,3,4]
+      .map(i => document.getElementById(`guest${i}`).value.trim())
+      .filter(Boolean);
+
+    if (guestNames.length === 0) {
+      const err = document.getElementById('formError');
+      err.textContent = 'Please enter at least one guest name.';
+      err.style.display = 'block';
+      return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled    = true;
+    btn.textContent = 'Checking In...';
+
+    const now            = new Date();
+    const checkinDateISO = now.toISOString().split('T')[0];
+
+    try {
+      const res = await fetch('/.netlify/functions/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          residentName,
+          residentAddress: finalAddress,
+          guestNames,
+          checkinDateISO
+        })
+      });
+
+      const result = await res.json();
+
+      if (result.status === 'success') {
+        document.getElementById('formContainer').style.display = 'none';
+        document.getElementById('successScreen').style.display = 'block';
+        return;
+      }
+
+      if (result.status === 'name_error') {
+        const unmatchedLower = (result.unmatched || []).map(n => n.toLowerCase());
+
+        [1,2,3,4].forEach(i => {
+          const input = document.getElementById(`guest${i}`);
+          const val   = input.value.trim();
+          if (val && unmatchedLower.includes(val.toLowerCase())) {
+            const errEl = document.getElementById(`guest${i}Error`);
+            if (!input.dataset.checkedOnce) {
+              errEl.textContent = `Please check the spelling of Guest ${i}.`;
+              input.dataset.checkedOnce = 'true';
+            } else {
+              errEl.textContent = `Guest ${i} (${val}) was not found. Please complete a waiver.`;
+            }
+            errEl.style.display = 'block';
+          }
+        });
+        btn.disabled    = false;
+        btn.textContent = 'Check In';
+        return;
+      }
+
+      // Generic error
+      const err = document.getElementById('formError');
+      err.textContent = result.message || 'Something went wrong. Please try again.';
+      err.style.display = 'block';
+      btn.disabled    = false;
+      btn.textContent = 'Check In';
+
+    } catch (err) {
+      console.error('Check-in error:', err);
+      const errEl = document.getElementById('formError');
+      errEl.textContent = 'Something went wrong. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled    = false;
+      btn.textContent = 'Check In';
+    }
+  }
+</script>
+
+</body>
+</html>

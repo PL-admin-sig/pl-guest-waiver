@@ -512,6 +512,7 @@
       <div class="additional-guest"><span>1.</span><input type="text" id="addGuest1" placeholder="Full name"></div>
       <div class="additional-guest"><span>2.</span><input type="text" id="addGuest2" placeholder="Full name"></div>
       <div class="additional-guest"><span>3.</span><input type="text" id="addGuest3" placeholder="Full name"></div>
+      <p class="date-auto">Please enter full names exactly as they should appear — accuracy ensures smooth check-in.</p>
     </div>
 
     <hr class="divider">
@@ -736,6 +737,12 @@
       document.getElementById('addGuest3').value.trim()
     ].filter(Boolean).join('; ');
 
+    const now      = new Date();
+    const today    = now.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+    const todayISO = now.toISOString().split('T')[0];
+    document.getElementById('guestDate').textContent    = 'Date: ' + today;
+    document.getElementById('residentDate').textContent = 'Date: ' + today;
+
     try {
       const res = await fetch('/.netlify/functions/submit-waiver', {
         method: 'POST',
@@ -872,6 +879,12 @@
     const btn = document.getElementById('submitBtn');
     btn.disabled    = true;
     btn.textContent = 'Submitting...';
+
+    const now      = new Date();
+    const today    = now.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+    const todayISO = now.toISOString().split('T')[0];
+    document.getElementById('guestDate').textContent    = 'Date: ' + today;
+    document.getElementById('residentDate').textContent = 'Date: ' + today;
 
     const title      = document.querySelector('input[name="title"]:checked')?.value || '';
     const guestName  = document.getElementById('guestName').value.trim();
