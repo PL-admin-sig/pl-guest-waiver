@@ -25,8 +25,9 @@ function airtableRequest(method, path, body, token) {
   });
 }
 
-function airtableGet(baseId, table, filterFormula, token) {
-  const path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+function airtableGet(baseId, table, filterFormula, token, offset) {
+  let path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+  if (offset) path += `&offset=${encodeURIComponent(offset)}`;
   return airtableRequest('GET', path, null, token);
 }
 
@@ -53,15 +54,21 @@ exports.handler = async (event) => {
   // ── GET: return full list of street addresses for dropdown ─────────────────
   if (event.httpMethod === 'GET') {
     try {
-      const r = await airtableGet(BASE, ADDRESS_TABLE, 'NOT({Street Address} = "")', TOKEN);
-      const data = JSON.parse(r.body);
-      if (r.status !== 200) {
-        console.error(`Address list fetch failed (${r.status}):`, r.body);
-        return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error' }) };
-      }
-      const addresses = (data.records || [])
-        .map(rec => rec.fields['Street Address'])
-        .filter(Boolean);
+      let addresses = [];
+      let offset;
+      do {
+        const r = await airtableGet(BASE, ADDRESS_TABLE, 'NOT({Street Address} = "")', TOKEN, offset);
+        if (r.status !== 200) {
+          console.error(`Address list fetch failed (${r.status}):`, r.body);
+          return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error' }) };
+        }
+        const data = JSON.parse(r.body);
+        addresses = addresses.concat(
+          (data.records || []).map(rec => rec.fields['Street Address']).filter(Boolean)
+        );
+        offset = data.offset;
+      } while (offset);
+
       console.log(`Address list fetched: ${addresses.length} addresses`);
       return { statusCode: 200, headers, body: JSON.stringify({ addresses }) };
     } catch (err) {
