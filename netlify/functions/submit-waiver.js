@@ -27,8 +27,9 @@ function airtableRequest(method, path, body, token) {
   });
 }
 
-function airtableGet(baseId, table, filterFormula, token) {
-  const path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+function airtableGet(baseId, table, filterFormula, token, offset) {
+  let path = `/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+  if (offset) path += `&offset=${encodeURIComponent(offset)}`;
   return airtableRequest('GET', path, null, token);
 }
 
@@ -258,6 +259,26 @@ function matchStreetName(submittedAddress, streetNames) {
   return { matched: bestScore >= 0.5, bestMatch, score: bestScore };
 }
 
+// ── Fetch all street names from Streets table (paginated) ───────────────────
+
+async function fetchAllStreetNames(baseId, table, token) {
+  let streetNames = [];
+  let offset;
+  do {
+    const r = await airtableGet(baseId, table, 'NOT({Street Name} = "")', token, offset);
+    if (r.status !== 200) {
+      console.error(`Street names fetch failed (${r.status}):`, r.body);
+      break;
+    }
+    const data = JSON.parse(r.body);
+    streetNames = streetNames.concat(
+      (data.records || []).map(rec => rec.fields['Street Name']).filter(Boolean)
+    );
+    offset = data.offset;
+  } while (offset);
+  return streetNames;
+}
+
 // ── Email templates ──────────────────────────────────────────────────────────
 
 function buildEmailTable(rows) {
@@ -354,8 +375,7 @@ exports.handler = async (event) => {
       if (pendingType === 'new_resident' && houseNumber) {
         let streetNames = [];
         try {
-          const r = await airtableGet(BASE, STREETS_TABLE, 'NOT({Street Name} = "")', TOKEN);
-          streetNames = (JSON.parse(r.body).records || []).map(rec => rec.fields['Street Name']).filter(Boolean);
+          streetNames = await fetchAllStreetNames(BASE, STREETS_TABLE, TOKEN);
         } catch (e) { console.error('Street names fetch (pending path):', e); }
         const { matched, bestMatch } = matchStreetName(submittedStreet, streetNames);
         if (matched && bestMatch) {
@@ -429,8 +449,7 @@ exports.handler = async (event) => {
     // 1. Fetch street names
     let streetNames = [];
     try {
-      const r = await airtableGet(BASE, STREETS_TABLE, 'NOT({Street Name} = "")', TOKEN);
-      streetNames = (JSON.parse(r.body).records || []).map(rec => rec.fields['Street Name']).filter(Boolean);
+      streetNames = await fetchAllStreetNames(BASE, STREETS_TABLE, TOKEN);
     } catch (err) { console.error('Failed to fetch street names:', err); }
 
     // 2. Fuzzy match
