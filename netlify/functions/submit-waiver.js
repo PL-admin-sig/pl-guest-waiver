@@ -386,9 +386,13 @@ exports.handler = async (event) => {
       }
 
       const pendingId = crypto.randomBytes(16).toString('hex');
+      const rawTitle  = data.title || '';
+      const formGuestName = (rawTitle && guestName.startsWith(rawTitle))
+        ? guestName.slice(rawTitle.length).trim()
+        : guestName;
       const formData  = JSON.stringify({
-        title:      data.title || '',
-        guestName,  memberName,
+        title:      rawTitle,
+        guestName:  formGuestName, memberName,
         addrStreet: submittedStreet,
         addrCity:   addrCity  || '',
         addrState:  addrState || '',
