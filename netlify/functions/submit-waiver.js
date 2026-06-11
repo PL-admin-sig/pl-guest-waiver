@@ -184,7 +184,7 @@ async function generateWaiverPDF(data) {
 
   async function embedSig(dataUrl, x, boxY) {
     try {
-      if (!dataUrl || !dataUrl.startsWith('data:image/')) return;
+      if (!dataUrl || !dataUrl.startsWith('data:image/png')) return;
       const img  = await pdfDoc.embedPng(Buffer.from(dataUrl.split(',')[1], 'base64'));
       const dims = img.scaleToFit(sigW - 8, sigH - 8);
       page.drawImage(img, { x: x + 4, y: boxY - sigH + (sigH - dims.height) / 2, width: dims.width, height: dims.height });
@@ -336,6 +336,7 @@ exports.handler = async (event) => {
     const STREETS_TABLE = process.env.AIRTABLE_STREET_NAMES_TABLE;
     const ADDRESS_TABLE = process.env.AIRTABLE_ADDRESS_MASTER_TABLE;
     const PENDING_TABLE = process.env.AIRTABLE_PENDING_TABLE;
+    const CHECKINS_TABLE = process.env.AIRTABLE_CHECKINS_TABLE;
     const SENDGRID_KEY  = process.env.SENDGRID_API_KEY;
     const TO_EMAIL      = process.env.TO_EMAIL;
     const FROM_EMAIL    = process.env.FROM_EMAIL;
@@ -343,7 +344,6 @@ exports.handler = async (event) => {
 
     const submittedStreet = memberAddress ? memberAddress.split(',')[0].trim() : '';
     const houseNumber     = extractNumber(submittedStreet);
-    const safeStreet      = typeof submittedStreet === 'string' ? submittedStreet : '';
     const guestsDisplay   = (additionalGuests && additionalGuests !== 'None') ? additionalGuests : 'None';
 
     // ── PATH A: Frontend-triggered pending flow ───────────────────────────
@@ -357,7 +357,7 @@ exports.handler = async (event) => {
           const r = await airtableGet(BASE, STREETS_TABLE, 'NOT({Street Name} = "")', TOKEN);
           streetNames = (JSON.parse(r.body).records || []).map(rec => rec.fields['Street Name']).filter(Boolean);
         } catch (e) { console.error('Street names fetch (pending path):', e); }
-        const { matched, bestMatch } = matchStreetName(safeStreet, streetNames);
+        const { matched, bestMatch } = matchStreetName(submittedStreet, streetNames);
         if (matched && bestMatch) {
           const fmtStreet = `${houseNumber} ${bestMatch}`;
           const cityBlock = [addrCity, [addrState, addrZip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
@@ -434,7 +434,7 @@ exports.handler = async (event) => {
     } catch (err) { console.error('Failed to fetch street names:', err); }
 
     // 2. Fuzzy match
-    const { matched, bestMatch } = matchStreetName(safeStreet, streetNames);
+    const { matched, bestMatch } = matchStreetName(submittedStreet, streetNames);
     console.log(`Street match: submitted="${submittedStreet}" matched=${matched} bestMatch="${bestMatch}"`);
 
     if (!matched) {
@@ -506,6 +506,21 @@ exports.handler = async (event) => {
           }, TOKEN);
           if (linkRes.status === 200) {
             console.log(`Address master updated: ${uniqueNew.length} new name(s) added, waiver linked`);
+
+            // Create automatic check-in record for this submission
+            try {
+              const checkinRes = await airtableCreate(BASE, CHECKINS_TABLE, {
+                'Guests Checked In': allNewNames.join('; '),
+                'Resident Address':  formattedStreet,
+                'Resident Name':     memberName,
+                'Check-in Date':     submissionDateISO
+              }, TOKEN);
+              if (checkinRes.status === 200 || checkinRes.status === 201) {
+                console.log('Guest check-in record created');
+              } else {
+                console.error(`Guest check-in create failed (${checkinRes.status}):`, checkinRes.body);
+              }
+            } catch (err) { console.error('Failed to create guest check-in record:', err); }
           } else {
             console.error(`Address master update failed (${linkRes.status}):`, linkRes.body);
           }
