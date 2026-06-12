@@ -523,7 +523,8 @@ exports.handler = async (event) => {
         } catch (err) { console.error('Failed to update address master:', err); }
       }
     } catch (err) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Airtable error: ' + err.message }) };
+      console.error('Waiver save failed:', err.message);
+      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error. Please try again.' }) };
     }
 
     // 6. Generate PDF and send confirmation email
@@ -560,7 +561,7 @@ exports.handler = async (event) => {
 
   } catch (topErr) {
     console.error('Unhandled exception:', topErr);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error: ' + (topErr.message || String(topErr)) }) };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error. Please try again.' }) };
   }
 };
 
