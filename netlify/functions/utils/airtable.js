@@ -42,4 +42,13 @@ function airtableUpdate(baseId, table, recordId, fields, token) {
   return airtableRequest('PATCH', `/v0/${baseId}/${encodeURIComponent(table)}/${recordId}`, { fields }, token);
 }
 
-module.exports = { airtableRequest, airtableGet, airtableCreate, airtableUpdate };
+// ── Formula value escaping ───────────────────────────────────────────────────
+// Escapes a value for safe use inside an Airtable filterByFormula string literal
+// (e.g. `{Field} = "value"`). Prevents formula injection from user-controlled
+// input such as IDs, addresses, or names. Escapes backslashes first, then quotes.
+
+function escapeFormulaValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+module.exports = { airtableRequest, airtableGet, airtableCreate, airtableUpdate, escapeFormulaValue };
