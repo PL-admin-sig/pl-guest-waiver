@@ -131,3 +131,15 @@ exports.handler = async (event) => {
 
   return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
 };
+
+// Rate limit: 15 requests per 60s per IP. Covers the GET (page load, address
+// list) plus a POST submission with a couple of retries after name-match
+// errors, while limiting address-list scraping and automated check-in probing.
+exports.config = {
+  path: '/.netlify/functions/checkin',
+  rateLimit: {
+    windowSize: 60,
+    windowLimit: 15,
+    aggregateBy: ['ip', 'domain']
+  }
+};

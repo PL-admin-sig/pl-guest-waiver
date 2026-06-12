@@ -563,3 +563,16 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error: ' + (topErr.message || String(topErr)) }) };
   }
 };
+
+// Rate limit: 10 requests per 60s per IP. Covers a normal multi-step flow
+// (initial submission, a pending retry, approve -> continue -> resubmit)
+// while preventing automated flooding of Airtable writes, PDF generation,
+// and SendGrid sends.
+exports.config = {
+  path: '/.netlify/functions/submit-waiver',
+  rateLimit: {
+    windowSize: 60,
+    windowLimit: 10,
+    aggregateBy: ['ip', 'domain']
+  }
+};
