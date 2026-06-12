@@ -1,7 +1,7 @@
 const https  = require('https');
 const crypto = require('crypto');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const { airtableGet, airtableCreate, airtableUpdate } = require('./utils/airtable');
+const { airtableGet, airtableCreate, airtableUpdate, escapeFormulaValue } = require('./utils/airtable');
 
 // ── SendGrid helper ──────────────────────────────────────────────────────────
 
@@ -243,11 +243,22 @@ async function fetchAllStreetNames(baseId, table, token) {
 
 // ── Email templates ──────────────────────────────────────────────────────────
 
+// Escapes guest-controlled values before insertion into HTML email content,
+// preventing HTML injection that could alter or obscure the admin action links.
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildEmailTable(rows) {
   return rows.map(([label, value], i) =>
     `<tr style="background:${i % 2 === 0 ? '#f8f5ef' : 'white'};">
       <td style="padding:10px 14px;font-weight:bold;color:#21465e;width:40%;">${label}</td>
-      <td style="padding:10px 14px;color:#333;">${value}</td>
+      <td style="padding:10px 14px;color:#333;">${escapeHtml(value)}</td>
     </tr>`
   ).join('');
 }
@@ -438,7 +449,7 @@ exports.handler = async (event) => {
     let existingWaiverIds = [];
     let existingNamesRaw  = '';
     try {
-      const r    = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${formattedStreet}"`, TOKEN);
+      const r    = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${escapeFormulaValue(formattedStreet)}"`, TOKEN);
       const recs = JSON.parse(r.body).records || [];
       addressFound = recs.length > 0;
       if (addressFound) {
@@ -530,11 +541,11 @@ exports.handler = async (event) => {
 
       const confirmHtml = `<div style="font-family:Georgia,serif;padding:24px;">
         <h2 style="color:#21465e;">New Guest Waiver Submitted</h2>
-        <p><strong>Guest:</strong> ${guestName}</p>
-        <p><strong>Member:</strong> ${memberName}</p>
-        <p><strong>Address:</strong> ${formattedAddress}</p>
-        <p><strong>Additional Guests:</strong> ${additionalGuests || 'None'}</p>
-        <p><strong>Date:</strong> ${submissionDate}</p>
+        <p><strong>Guest:</strong> ${escapeHtml(guestName)}</p>
+        <p><strong>Member:</strong> ${escapeHtml(memberName)}</p>
+        <p><strong>Address:</strong> ${escapeHtml(formattedAddress)}</p>
+        <p><strong>Additional Guests:</strong> ${escapeHtml(additionalGuests || 'None')}</p>
+        <p><strong>Date:</strong> ${escapeHtml(submissionDate)}</p>
         <p style="color:#777;font-size:12px;">Signed waiver attached as PDF.</p>
       </div>`;
       const confirmText = `New Guest Waiver\n\nGuest: ${guestName}\nMember: ${memberName}\nAddress: ${formattedAddress}\nAdditional Guests: ${additionalGuests || 'None'}\nDate: ${submissionDate}\n\nSigned waiver attached as PDF.`;

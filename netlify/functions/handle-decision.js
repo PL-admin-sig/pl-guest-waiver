@@ -1,5 +1,16 @@
 const crypto = require('crypto');
-const { airtableGet, airtableCreate, airtableUpdate } = require('./utils/airtable');
+const { airtableGet, airtableCreate, airtableUpdate, escapeFormulaValue } = require('./utils/airtable');
+
+// Escapes guest-controlled values before they're inserted into HTML response
+// pages, preventing stored XSS via fields like Guest Name or Full Address.
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function page(title, heading, color, message) {
   return `<html>
@@ -43,7 +54,7 @@ exports.handler = async (event) => {
   // ── Fetch pending record ──────────────────────────────────────────────────
   let pendingRecord;
   try {
-    const res  = await airtableGet(BASE, PENDING_TABLE, `{Pending ID} = "${id}"`, TOKEN);
+    const res  = await airtableGet(BASE, PENDING_TABLE, `{Pending ID} = "${escapeFormulaValue(id)}"`, TOKEN);
     const data = JSON.parse(res.body);
     if (!data.records || data.records.length === 0) {
       return { statusCode: 404, headers: htmlHeaders, body: page('Not Found', 'Submission Not Found', '#c0392b', 'This submission could not be found. It may have already been processed or deleted.') };
@@ -91,7 +102,7 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers: htmlHeaders,
       body: page('Approved', '&#10003; Address Approved', '#2d6a4f',
-        `<strong>${streetPart || address}</strong> has been added to the Address Master.<br><br>
+        `<strong>${escapeHtml(streetPart || address)}</strong> has been added to the Address Master.<br><br>
          The guest may now re-sign and complete their waiver submission.`)
     };
   }
@@ -104,7 +115,7 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers: htmlHeaders,
       body: page('Denied', '&#10007; Address Denied', '#c0392b',
-        `The submission for <strong>${guestName}</strong> has been denied.<br><br>
+        `The submission for <strong>${escapeHtml(guestName)}</strong> has been denied.<br><br>
          The guest will be asked to re-enter their street address.`)
     };
   }
@@ -117,7 +128,7 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers: htmlHeaders,
       body: page('Retry', '&#8635; Retry Requested', '#b8963e',
-        `The submission for <strong>${guestName}</strong> has been returned for re-entry.<br><br>
+        `The submission for <strong>${escapeHtml(guestName)}</strong> has been returned for re-entry.<br><br>
          The guest will be prompted to re-enter their street address.`)
     };
   }
@@ -130,7 +141,7 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers: htmlHeaders,
       body: page('Deleted', '&#128465; Submission Deleted', '#7f1d1d',
-        `The submission for <strong>${guestName}</strong> has been cancelled and deleted.<br><br>
+        `The submission for <strong>${escapeHtml(guestName)}</strong> has been cancelled and deleted.<br><br>
          The guest's screen will reset and they will be asked to start over.`)
     };
   }

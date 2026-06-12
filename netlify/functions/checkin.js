@@ -1,4 +1,4 @@
-const { airtableGet, airtableCreate } = require('./utils/airtable');
+const { airtableGet, airtableCreate, escapeFormulaValue } = require('./utils/airtable');
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ exports.handler = async (event) => {
     // ── Look up address in Address Master (must match dropdown selection exactly) ─
     let addressRecord;
     try {
-      const r = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${residentAddress.trim()}"`, TOKEN);
+      const r = await airtableGet(BASE, ADDRESS_TABLE, `{Street Address} = "${escapeFormulaValue(residentAddress.trim())}"`, TOKEN);
       if (r.status !== 200) {
         console.error(`Address master lookup failed (${r.status}):`, r.body);
         return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error' }) };

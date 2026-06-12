@@ -1,4 +1,5 @@
 const https = require('https');
+const { escapeFormulaValue } = require('./utils/airtable');
 
 exports.handler = async (event) => {
   const headers = {
@@ -9,12 +10,18 @@ exports.handler = async (event) => {
   const { id } = event.queryStringParameters || {};
   if (!id) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing id' }) };
 
+  // Pending IDs are always 32-char hex strings (crypto.randomBytes(16).toString('hex')).
+  // Reject anything else outright before it ever reaches the Airtable formula.
+  if (!/^[a-f0-9]{32}$/.test(id)) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid id' }) };
+  }
+
   const TOKEN         = process.env.AIRTABLE_TOKEN;
   const BASE          = process.env.AIRTABLE_BASE;
   const PENDING_TABLE = process.env.AIRTABLE_PENDING_TABLE;
 
   try {
-    const encoded = encodeURIComponent(`{Pending ID} = "${id}"`);
+    const encoded = encodeURIComponent(`{Pending ID} = "${escapeFormulaValue(id)}"`);
     const path    = `/v0/${BASE}/${encodeURIComponent(PENDING_TABLE)}?filterByFormula=${encoded}`;
     const options = {
       hostname: 'api.airtable.com',
