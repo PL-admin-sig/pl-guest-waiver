@@ -382,9 +382,6 @@
     btn.disabled    = true;
     btn.textContent = 'Checking In...';
 
-    const now            = new Date();
-    const checkinDateISO = now.toISOString().split('T')[0];
-
     try {
       const res = await fetch('/.netlify/functions/checkin', {
         method: 'POST',
@@ -392,8 +389,7 @@
         body: JSON.stringify({
           residentName,
           residentAddress: finalAddress,
-          guestNames,
-          checkinDateISO
+          guestNames
         })
       });
 
