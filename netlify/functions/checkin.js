@@ -48,7 +48,7 @@ exports.handler = async (event) => {
     try { data = JSON.parse(event.body); }
     catch { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid request body' }) }; }
 
-    const { residentName, residentAddress, guestNames, checkinDateISO } = data;
+    const { residentName, residentAddress, guestNames } = data;
 
     // ── Validate required fields ──────────────────────────────────────────────
     if (!residentName || !residentName.trim()) {
@@ -113,7 +113,7 @@ exports.handler = async (event) => {
         'Guests Checked In': submittedGuests.join('; '),
         'Resident Address':  residentAddress.trim(),
         'Resident Name':     residentName.trim(),
-        'Check-in Date':     checkinDateISO || new Date().toISOString().split('T')[0]
+        'Check-in Date':     new Date().toISOString()
       }, TOKEN);
 
       if (checkinRes.status === 200 || checkinRes.status === 201) {

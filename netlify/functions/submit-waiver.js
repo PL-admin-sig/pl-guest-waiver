@@ -498,7 +498,7 @@ exports.handler = async (event) => {
                 'Guests Checked In': allNewNames.join('; '),
                 'Resident Address':  formattedStreet,
                 'Resident Name':     memberName,
-                'Check-in Date':     submissionDateISO
+                'Check-in Date':     new Date().toISOString()
               }, TOKEN);
               if (checkinRes.status === 200 || checkinRes.status === 201) {
                 console.log('Guest check-in record created');
