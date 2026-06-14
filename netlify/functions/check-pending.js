@@ -2,6 +2,7 @@ const https = require('https');
 const { escapeFormulaValue } = require('./utils/airtable');
 
 exports.handler = async (event) => {
+  console.log('[plc-gws] handler ready');
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json'

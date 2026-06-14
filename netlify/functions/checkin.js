@@ -3,9 +3,8 @@ const { airtableGet, airtableCreate, escapeFormulaValue } = require('./utils/air
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 exports.handler = async (event) => {
+  console.log('[plc-gws] handler ready');
   const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json'
   };
 

@@ -28,6 +28,7 @@ function page(title, heading, color, message) {
 const VALID_ACTIONS = ['approve', 'deny', 'retry', 'delete'];
 
 exports.handler = async (event) => {
+  console.log('[plc-gws] handler ready');
   const htmlHeaders = { 'Content-Type': 'text/html' };
   const { id, action, token } = event.queryStringParameters || {};
 

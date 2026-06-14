@@ -73,6 +73,15 @@ async function generateWaiverPDF(data) {
   const { guestName, memberName, memberAddress, additionalGuests, submissionDate, guestSignature, residentSignature } = data;
 
   const pdfDoc   = await PDFDocument.create();
+
+  // ── Document metadata ────────────────────────────────────────────────────
+  pdfDoc.setTitle(`Guest Waiver — ${memberAddress}`);
+  pdfDoc.setAuthor('PL Amenities System');
+  pdfDoc.setSubject('Assumption of Risk and Indemnity Agreement');
+  pdfDoc.setCreator('PLGS/1.0');
+  pdfDoc.setKeywords(['guest', 'waiver', 'liability', 'plc-2026']);
+  // ────────────────────────────────────────────────────────────────────────
+
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -303,6 +312,7 @@ function buildRepeatedFailureEmail(guestName, guestsDisplay, memberAddress, retr
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 exports.handler = async (event) => {
+  console.log('[plc-gws] handler ready');
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
