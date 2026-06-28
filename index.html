@@ -634,6 +634,15 @@
     return !canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(v => v !== 0);
   }
 
+  // ── Validation helpers ────────────────────────────────────────────────────
+  // Requires at least two space-separated words, with the last word being
+  // at least 2 characters — enforces first + last name without false positives
+  // on names like "O' Brien" or short surnames like "Li" or "Ng".
+  function validateFullName(name) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    return parts.length >= 2 && parts[parts.length - 1].length >= 2;
+  }
+
   // ── Error display ─────────────────────────────────────────────────────────
   function showError(msg) {
     const el = document.getElementById('errorMsg');
@@ -732,11 +741,22 @@
     const zip        = document.getElementById('addrZip').value.trim();
     const fullAddr   = street + ', ' + city + ', ' + state + ' ' + zip;
     const fullGuest  = (title ? title + ' ' : '') + guestName;
-    const addGuests  = [
+    const addGuestsArr = [
       document.getElementById('addGuest1').value.trim(),
       document.getElementById('addGuest2').value.trim(),
       document.getElementById('addGuest3').value.trim()
-    ].filter(Boolean).join('; ');
+    ].filter(Boolean);
+    const addGuests = addGuestsArr.join('; ');
+
+    // Full name check — primary guest and any additional guests
+    const allNamesPending = [guestName, ...addGuestsArr];
+    if (allNamesPending.some(n => !validateFullName(n))) {
+      btn.disabled    = false;
+      btn.textContent = 'Submit Waiver';
+      movedTriggered  = false;
+      showError('Please enter a full first and last name for each guest.');
+      return;
+    }
 
     const now      = new Date();
     const today    = now.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
@@ -877,6 +897,20 @@
       return;
     }
 
+    // Full name check — primary guest and any additional guests
+    const guestNameRaw = document.getElementById('guestName').value.trim();
+    const addGuestRaws = [
+      document.getElementById('addGuest1').value.trim(),
+      document.getElementById('addGuest2').value.trim(),
+      document.getElementById('addGuest3').value.trim()
+    ].filter(Boolean);
+
+    const allNames = [guestNameRaw, ...addGuestRaws];
+    if (allNames.some(n => !validateFullName(n))) {
+      showError('Please enter a full first and last name for each guest.');
+      return;
+    }
+
     const btn = document.getElementById('submitBtn');
     btn.disabled    = true;
     btn.textContent = 'Submitting...';
@@ -888,7 +922,7 @@
     document.getElementById('residentDate').textContent = 'Date: ' + today;
 
     const title      = document.querySelector('input[name="title"]:checked')?.value || '';
-    const guestName  = document.getElementById('guestName').value.trim();
+    const guestName  = guestNameRaw;
     const memberName = document.getElementById('memberName').value.trim();
     const street     = streetRaw;
     const city       = document.getElementById('addrCity').value.trim();
@@ -896,11 +930,7 @@
     const zip        = document.getElementById('addrZip').value.trim();
     const fullAddr   = street + ', ' + city + ', ' + state + ' ' + zip;
     const fullGuest  = (title ? title + ' ' : '') + guestName;
-    const addGuests  = [
-      document.getElementById('addGuest1').value.trim(),
-      document.getElementById('addGuest2').value.trim(),
-      document.getElementById('addGuest3').value.trim()
-    ].filter(Boolean).join('; ');
+    const addGuests  = addGuestRaws.join('; ');
 
     try {
       const res = await fetch('/.netlify/functions/submit-waiver', {
