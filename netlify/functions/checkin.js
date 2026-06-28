@@ -5,6 +5,8 @@ const { airtableGet, airtableCreate, escapeFormulaValue } = require('./utils/air
 exports.handler = async (event) => {
   console.log('[plc-gws] handler ready');
   const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json'
   };
 
@@ -100,13 +102,13 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({
           status: 'name_error',
-          message: 'Name not found — please enter it exactly as written on your waiver.',
+          message: 'Name not found. Please enter it exactly as written on your waiver.',
           unmatched
         })
       };
     }
 
-    // ── All guests matched — create check-in record ─────────────────────────────
+    // ── All guests matched: create check-in record ───────────────────────────
     try {
       const checkinRes = await airtableCreate(BASE, CHECKINS_TABLE, {
         'Guests Checked In': submittedGuests.join('; '),
@@ -116,7 +118,7 @@ exports.handler = async (event) => {
       }, TOKEN);
 
       if (checkinRes.status === 200 || checkinRes.status === 201) {
-        console.log(`Check-in recorded: "${residentName.trim()}" at "${residentAddress.trim()}" — guests: ${submittedGuests.join('; ')}`);
+        console.log(`Check-in recorded: "${residentName.trim()}" at "${residentAddress.trim()}" guests: ${submittedGuests.join('; ')}`);
         return { statusCode: 200, headers, body: JSON.stringify({ status: 'success' }) };
       } else {
         console.error(`Guest check-in create failed (${checkinRes.status}):`, checkinRes.body);
